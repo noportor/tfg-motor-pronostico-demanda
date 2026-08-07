@@ -34,38 +34,38 @@ services:
       - "host.docker.internal:host-gateway"
 
   # ---------------------------------------------------------------------------
-  # Tablero: visor Streamlit de solo lectura sobre salidas*/.
+  # Visor: SPA React (MUI + ECharts) servida por nginx, de solo lectura sobre
+  # salidas*/.
   #
-  #   docker compose up tablero        ->  http://localhost:8501
+  #   docker compose up -d visor       ->  http://localhost:8501
   #
-  # El montaje es :ro a propósito — el tablero VISUALIZA corridas; ejecutarlas
-  # sigue siendo `docker compose run --rm tfg python main.py ejecutar`. Así el
-  # pipeline queda como única fuente de verdad y la interfaz no puede tocar ni
-  # los datos ni las salidas (RN-1/RN-6).
+  # Sin backend: nginx sirve la SPA y expone salidas*/ como /datos/ (autoindex
+  # JSON). Todo lo demás del montaje —datos/crudo/ incluido— responde 403 por
+  # regla de nginx (ver visor/nginx.conf). Los filtros son estado del cliente:
+  # no re-ejecutan nada.
   # ---------------------------------------------------------------------------
-  tablero:
+  visor:
     build:
-      context: .
-      dockerfile: Dockerfile.tablero
-    image: motor-pronostico-tablero
-    # El proceso puede morir por un fallo en la capa nativa (pyarrow/serialización),
-    # que no deja traceback. Sin política de reinicio, un crash deja el tablero
-    # muerto hasta levantarlo a mano; con esto vuelve solo en segundos.
+      context: ./visor
+    image: motor-pronostico-visor
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    environment:
-      # Sin watcher: en Docker sobre Windows, vigilar por polling el repositorio
-      # montado (con .git y datos adentro) consume CPU e I/O de fondo y hace
-      # sentir lento todo. No se pierde nada: Streamlit relee los scripts en
-      # cada ejecución igual; el watcher solo servía para el aviso de recarga.
-      STREAMLIT_SERVER_FILE_WATCHER_TYPE: "none"
     ports:
-      - "8501:8501"
+      - "8501:80"
     volumes:
       - ..:/repo:ro
-    working_dir: /repo/motor-pronostico-novapack
+
+  # Desarrollo del visor con HMR (vite). Levantar con:
+  #   docker compose --profile dev up visor-dev   ->  http://localhost:5173
+  visor-dev:
+    profiles: ["dev"]
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
+    environment:
+      VISOR_DATOS_URL: "http://visor:80"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./visor:/app
+    depends_on:
+      - visor

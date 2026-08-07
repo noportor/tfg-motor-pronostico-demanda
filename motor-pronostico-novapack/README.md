@@ -126,29 +126,41 @@ docker compose run --rm tfg python main.py ejecutar \
   --anular salidas.directorio=salidas_historial_48
 ```
 
-### 5 · Tablero — el experimento completo en el navegador
+### 5 · Visor — el experimento completo en el navegador
 
 ```bash
-docker compose up tablero        # -> http://localhost:8501
+docker compose up -d visor       # -> http://localhost:8501
 ```
 
-Visor de **solo lectura** sobre `salidas*/`: el flujo etapa por etapa (con sus
-conteos y decisiones), la inspección interactiva, el dashboard de resultados,
-la optimización de cada modelo, la selección del motor, el contraste
-estadístico y un comparador de corridas para las ablaciones.
+SPA React (MUI + ECharts) servida por nginx, de **solo lectura** sobre
+`salidas*/`: el flujo etapa por etapa (con sus conteos y decisiones), la
+inspección interactiva, el dashboard de resultados, la optimización de cada
+modelo, la selección del motor, el contraste estadístico y un comparador de
+corridas para las ablaciones. **Sin backend**: los filtros son estado del
+cliente (instantáneos) y no hay servidor de aplicación que mantener ni que
+pueda caerse.
 
 Tres reglas lo gobiernan:
 
-1. **El pipeline es la única fuente de verdad.** El tablero no calcula
-   resultados ni escribe nada (el montaje es de solo lectura); si un número no
-   está en `salidas/`, el lugar de calcularlo es el pipeline.
+1. **El pipeline es la única fuente de verdad.** El visor no calcula resultados
+   ni escribe nada (montaje de solo lectura); si un número no está en
+   `salidas/`, el lugar de calcularlo es el pipeline. nginx **niega** todo lo
+   que no sea `salidas*/`: el snapshot confidencial responde 403 aunque esté en
+   el montaje.
 2. **Todo se descubre por convención.** Cada `salidas*/` con manifiesto es una
-   corrida; cada CSV/PNG nuevo aparece en la página *Artefactos*; cada etapa
-   registrada con `reporte.etapa(...)` aparece en *Flujo*; cada archivo nuevo
-   en `tablero/paginas/` es una página. Agregar una mejora no toca el tablero.
-3. **Prueba de humo antes de confiar:**
-   `docker compose run --rm tablero python tablero/humo.py` ejecuta las 9
-   páginas de verdad y falla si alguna revienta.
+   corrida (el selector y el comparador las levantan solos); cada CSV/PNG nuevo
+   aparece en *Artefactos*; cada etapa registrada con `reporte.etapa(...)`
+   aparece en *Flujo*; cada archivo nuevo en `visor/src/vistas/` que exporte
+   `vista` es una vista nueva (registro por `import.meta.glob`, sin lista
+   central).
+3. **El typecheck es el gate del build**: `docker compose build visor` corre
+   `tsc` + `vite build`; sin types verdes no hay imagen.
+
+Para desarrollar el visor con HMR (tu flujo de siempre):
+
+```bash
+docker compose --profile dev up visor-dev    # -> http://localhost:5173
+```
 
 ### Pruebas
 
