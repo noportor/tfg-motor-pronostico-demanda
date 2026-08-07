@@ -22,7 +22,9 @@ RAIZ = Path(__file__).resolve().parent
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src import carga, features, figuras, inspeccion, metricas, particion, pruebas, series
+from src import (
+    carga, eventos, features, figuras, inspeccion, metricas, particion, pruebas, series,
+)
 from src.config import cargar_config
 from src.costos import cargar_costos
 from src.modelos import construir_modelos
@@ -166,6 +168,35 @@ def comando_ejecutar(cfg) -> int:
     )
     _fin(inicio)
 
+    # --- 3b. Evento exógeno (COVID-19) --------------------------------------
+    inicio = _paso(f"3b/{total}", "Tratamiento del evento exógeno")
+    panel_ajuste_largo, informe_evento = eventos.aplicar_tratamiento(panel_largo, cfg)
+    for linea in informe_evento.lineas():
+        print("      " + linea)
+    reporte.etapa(
+        "evento_exogeno", "Tratamiento del evento exógeno (ajuste)",
+        entrada={"observaciones_en_ventana": informe_evento.observaciones_en_ventana},
+        salida={"observaciones_reemplazadas": informe_evento.observaciones_reemplazadas},
+        decisiones={
+            "evento": informe_evento.nombre or "ninguno",
+            "ventana": f"{informe_evento.desde}..{informe_evento.hasta}",
+            "tratamiento": informe_evento.tratamiento,
+        },
+        conteos={
+            "series_afectadas": informe_evento.series_afectadas,
+            "sin_historia_previa": informe_evento.sin_historia_previa,
+        },
+        notas=[
+            "El tratamiento reproduce la práctica documentada de la empresa "
+            "durante el evento (copiar la historia de la gestión pasada). La "
+            "serie corregida existe SOLO para el ajuste: la evaluación compara "
+            "siempre contra la serie observada, y la ventana cae íntegra en "
+            "entrenamiento (lo valida la configuración).",
+        ],
+        duracion_s=time.perf_counter() - inicio,
+    )
+    _fin(inicio)
+
     # --- 4. Partición y cohorte --------------------------------------------
     inicio = _paso(f"4/{total}", "Partición temporal y criterios de inclusión")
     corte = particion.particionar(cfg)
@@ -173,8 +204,11 @@ def comando_ejecutar(cfg) -> int:
     for linea in resumen_particion.to_string(index=False).split("\n"):
         print("      " + linea)
 
-    cohorte_larga, informe_cohorte = particion.aplicar_criterios_inclusion(
-        panel_largo, cfg, corte
+    # Los criterios se miden sobre el panel de AJUSTE: con el tratamiento de la
+    # empresa, una serie apagada por el confinamiento no pierde su lugar en la
+    # muestra por ceros exógenos.
+    cohorte_ajustada, informe_cohorte = particion.aplicar_criterios_inclusion(
+        panel_ajuste_largo, cfg, corte
     )
     for linea in informe_cohorte.lineas():
         print("      " + linea)
@@ -202,12 +236,33 @@ def comando_ejecutar(cfg) -> int:
 
     # --- 5. Paneles ---------------------------------------------------------
     inicio = _paso(f"5/{total}", "Panel ancho y bloques")
-    panel = series.a_panel_ancho(cohorte_larga)
+    # Dos mundos con las MISMAS series: el de AJUSTE (serie corregida por el
+    # evento) alimenta los modelos; el REAL es contra el que se evalúa.
+    series_cohorte = set(cohorte_ajustada["serie"].unique())
+    cohorte_real = panel_largo.loc[
+        panel_largo["serie"].isin(series_cohorte)
+    ].reset_index(drop=True)
+
+    panel = series.a_panel_ancho(cohorte_ajustada)          # ajuste
+    panel_real = series.a_panel_ancho(cohorte_real)         # evaluación
+    if not panel.index.equals(panel_real.index) or list(panel.columns) != list(panel_real.columns):
+        raise RuntimeError(
+            "El panel de ajuste y el real divergen en forma: el tratamiento del "
+            "evento no puede alterar la vida de las series."
+        )
+
     panel_entrenamiento = panel.loc[panel.index <= corte.entrenamiento[-1]]
     panel_validacion = panel.loc[
         (panel.index >= corte.validacion[0]) & (panel.index <= corte.validacion[-1])
     ]
-    panel_prueba = panel.loc[panel.index >= corte.prueba[0]]
+    panel_prueba = panel_real.loc[panel_real.index >= corte.prueba[0]]
+    # La ventana del evento cae en entrenamiento: en prueba ambos mundos deben
+    # ser idénticos. Verificación activa, no supuesta.
+    if not panel.loc[panel.index >= corte.prueba[0]].equals(panel_prueba):
+        raise RuntimeError(
+            "El bloque de prueba difiere entre el panel de ajuste y el real: "
+            "la evaluación estaría tocando datos corregidos (RN-1)."
+        )
     print(f"      panel {panel.shape[0]} meses × {panel.shape[1]:,} series  "
           f"(train {len(panel_entrenamiento)} · val {len(panel_validacion)} · "
           f"test {len(panel_prueba)})")
@@ -215,11 +270,11 @@ def comando_ejecutar(cfg) -> int:
 
     # --- 6. Features --------------------------------------------------------
     inicio = _paso(f"6/{total}", "Construyendo features (sin fuga temporal)")
-    tabla = features.construir_features(cohorte_larga, cfg)
+    tabla = features.construir_features(cohorte_ajustada, cfg)
     print(f"      {len(tabla):,} filas × {len(features.nombres_de_features(cfg))} features")
     reporte.etapa(
         "features", "Variables derivadas, sin fuga temporal", rf="RF-5",
-        entrada={"filas_panel": len(cohorte_larga)},
+        entrada={"filas_panel": len(cohorte_ajustada)},
         salida={
             "filas": len(tabla),
             "features": len(features.nombres_de_features(cfg)),
@@ -307,7 +362,9 @@ def comando_ejecutar(cfg) -> int:
 
     # --- 8. Motor -----------------------------------------------------------
     inicio = _paso(f"8/{total}", "Motor de selección (decide mirando SOLO validación)")
-    motor = Motor(cfg, predicciones, panel)
+    # El motor decide comparando los pronósticos contra la serie REAL de
+    # validación: la corrección del evento vive solo en el ajuste.
+    motor = Motor(cfg, predicciones, panel_real)
     motor.ajustar(panel_entrenamiento, panel_validacion)
     predicciones["motor"] = truncar_en_cero(
         enmascarar_fuera_de_vida(motor.predecir(panel), panel)

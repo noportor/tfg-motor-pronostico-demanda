@@ -75,6 +75,30 @@ series:
   rellenar_ceros_intermedios: true
 
 # -----------------------------------------------------------------------------
+# 4b. Evento exógeno — COVID-19
+# -----------------------------------------------------------------------------
+# La pandemia golpeó las ventas entre marzo-2020 y febrero-2021 (piso: abril
+# 2020, −88 % valorizado; 181 series activas se apagaron por completo en el
+# confinamiento). El período cae ÍNTEGRO dentro del bloque de entrenamiento:
+# validación y prueba están limpias.
+#
+# Tratamiento base: `copiar_gestion_previa` — cada mes de la ventana se
+# reemplaza, PARA EL AJUSTE, por el mismo mes del año anterior. No es una
+# decisión del investigador: es la PRÁCTICA DOCUMENTADA de Planificación de la
+# empresa durante el evento (se copió la historia de la gestión pasada), y el
+# benchmark debe ser el método real (§10). La serie observada sigue siendo la
+# fuente de verdad: la evaluación jamás toca datos corregidos (la ventana no
+# alcanza validación ni prueba, y el pipeline lo verifica).
+#
+#   copiar_gestion_previa : práctica de la empresa (base)
+#   nada                  : historia cruda (ablación de sensibilidad)
+evento_exogeno:
+  nombre: "covid19"
+  desde: "2020-03"
+  hasta: "2021-02"
+  tratamiento: "copiar_gestion_previa"
+
+# -----------------------------------------------------------------------------
 # 5. Criterios de inclusión y exclusión
 # -----------------------------------------------------------------------------
 # Se miden SOBRE EL BLOQUE DE ENTRENAMIENTO exclusivamente. Medirlos sobre la
