@@ -306,7 +306,15 @@ def informe_pruebas(
     L += ("  " + victorias.to_string(index=False)).split("\n")
     L += ["",
           "  Los empates se reparten proporcionalmente entre los modelos empatados;",
-          "  adjudicárselos al primero por orden de columna sería un artefacto.", ""]
+          "  adjudicárselos al primero por orden de columna sería un artefacto.",
+          "",
+          "  CÓMO NO LEER ESTA TABLA. El motor no compite en igualdad de condiciones",
+          "  aquí: su pronóstico ES, por construcción, el de uno de los candidatos, de",
+          "  modo que cada vez que acierta EMPATA con el modelo que eligió y nunca gana",
+          "  en solitario. Por eso su columna de victorias sin empate es cero y su",
+          "  porcentaje sale diluido por el reparto. Esta tabla describe el reparto",
+          "  entre los modelos BASE; el desempeño del motor se lee en la Tabla 8, en",
+          "  los contrastes de Wilcoxon y en su tasa de acierto.", ""]
 
     # -- 4. Tasa de acierto del motor ---------------------------------------
     if acierto_motor:
