@@ -112,6 +112,16 @@ class ConfigInclusion:
 
 
 @dataclass(frozen=True)
+class ConfigMultihorizonte:
+    """Evaluación multihorizonte (RN-4, segunda parte): protocolo separado."""
+
+    activo: bool
+    horizonte_maximo: int
+    origenes: str  # "rodantes" | "fijo"
+    reentrenar_lightgbm: bool
+
+
+@dataclass(frozen=True)
 class ConfigFeatures:
     rezagos: list[int]
     ventanas_moviles: list[int]
@@ -140,6 +150,7 @@ class Config:
     series: ConfigSeries
     evento: ConfigEvento | None
     inclusion: ConfigInclusion
+    multihorizonte: ConfigMultihorizonte | None
     modelos: dict[str, Any]
     features: ConfigFeatures
     pruebas: ConfigPruebas
@@ -368,6 +379,33 @@ def cargar_config(
                 f"período declarado ({periodo.inicio})."
             )
 
+    multihorizonte = None
+    if crudo.get("multihorizonte"):
+        m = crudo["multihorizonte"]
+        multihorizonte = ConfigMultihorizonte(
+            activo=bool(m.get("activo", True)),
+            horizonte_maximo=int(_exigir(m, "horizonte_maximo", "multihorizonte")),
+            origenes=str(_exigir(m, "origenes", "multihorizonte")).lower(),
+            reentrenar_lightgbm=bool(m.get("reentrenar_lightgbm", True)),
+        )
+        if multihorizonte.horizonte_maximo < 1:
+            raise ErrorDeConfiguracion(
+                f"multihorizonte.horizonte_maximo debe ser >= 1; "
+                f"llegó {multihorizonte.horizonte_maximo}."
+            )
+        if multihorizonte.origenes not in ("rodantes", "fijo"):
+            raise ErrorDeConfiguracion(
+                f"multihorizonte.origenes debe ser 'rodantes' o 'fijo'; "
+                f"llegó '{multihorizonte.origenes}'."
+            )
+        # El primer origen es el cierre de validación: con un horizonte que no
+        # alcanza ni un mes de prueba, la evaluación no tendría nada que medir.
+        if particion.fin_validacion + 1 > periodo.fin:
+            raise ErrorDeConfiguracion(
+                "multihorizonte: no hay meses de prueba después del cierre de "
+                "validación; no hay nada que evaluar."
+            )
+
     i = crudo["inclusion"]
     inclusion = ConfigInclusion(
         historial_minimo_meses=int(_exigir(i, "historial_minimo_meses", "inclusion")),
@@ -432,6 +470,7 @@ def cargar_config(
         series=series,
         evento=evento,
         inclusion=inclusion,
+        multihorizonte=multihorizonte,
         modelos=modelos,
         features=features,
         pruebas=pruebas,
