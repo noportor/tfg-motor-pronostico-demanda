@@ -92,6 +92,19 @@ class ConfigSeries:
 
 
 @dataclass(frozen=True)
+class ConfigEvento:
+    """Evento exógeno cuyo tratamiento en el ajuste está parametrizado."""
+
+    nombre: str
+    desde: pd.Period
+    hasta: pd.Period
+    tratamiento: str  # "copiar_gestion_previa" | "nada"
+
+    def ventana(self) -> pd.PeriodIndex:
+        return pd.period_range(self.desde, self.hasta, freq="M")
+
+
+@dataclass(frozen=True)
 class ConfigInclusion:
     historial_minimo_meses: int
     proporcion_maxima_ceros: float
@@ -125,6 +138,7 @@ class Config:
     periodo: ConfigPeriodo
     particion: ConfigParticion
     series: ConfigSeries
+    evento: ConfigEvento | None
     inclusion: ConfigInclusion
     modelos: dict[str, Any]
     features: ConfigFeatures
@@ -320,6 +334,40 @@ def cargar_config(
         rellenar_ceros_intermedios=bool(s.get("rellenar_ceros_intermedios", True)),
     )
 
+    evento = None
+    if crudo.get("evento_exogeno"):
+        ev = crudo["evento_exogeno"]
+        evento = ConfigEvento(
+            nombre=str(_exigir(ev, "nombre", "evento_exogeno")),
+            desde=mes_a_periodo(_exigir(ev, "desde", "evento_exogeno")),
+            hasta=mes_a_periodo(_exigir(ev, "hasta", "evento_exogeno")),
+            tratamiento=str(_exigir(ev, "tratamiento", "evento_exogeno")).lower(),
+        )
+        if evento.desde > evento.hasta:
+            raise ErrorDeConfiguracion(
+                f"evento_exogeno: desde ({evento.desde}) posterior a hasta ({evento.hasta})."
+            )
+        if evento.tratamiento not in ("copiar_gestion_previa", "nada"):
+            raise ErrorDeConfiguracion(
+                f"evento_exogeno.tratamiento debe ser 'copiar_gestion_previa' o "
+                f"'nada'; llegó '{evento.tratamiento}'."
+            )
+        # La ventana debe caer ÍNTEGRA dentro del entrenamiento: si tocara
+        # validación o prueba, la evaluación se haría sobre datos corregidos y
+        # los resultados quedarían fabricados (RN-1).
+        if evento.hasta > particion.fin_entrenamiento:
+            raise ErrorDeConfiguracion(
+                f"evento_exogeno: la ventana termina en {evento.hasta}, dentro de "
+                f"validación/prueba (entrenamiento cierra en "
+                f"{particion.fin_entrenamiento}). La evaluación no puede tocar "
+                f"datos corregidos."
+            )
+        if evento.desde < periodo.inicio:
+            raise ErrorDeConfiguracion(
+                f"evento_exogeno: la ventana empieza en {evento.desde}, antes del "
+                f"período declarado ({periodo.inicio})."
+            )
+
     i = crudo["inclusion"]
     inclusion = ConfigInclusion(
         historial_minimo_meses=int(_exigir(i, "historial_minimo_meses", "inclusion")),
@@ -382,6 +430,7 @@ def cargar_config(
         periodo=periodo,
         particion=particion,
         series=series,
+        evento=evento,
         inclusion=inclusion,
         modelos=modelos,
         features=features,

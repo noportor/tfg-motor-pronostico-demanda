@@ -197,8 +197,8 @@ def test_ningun_modelo_predice_demanda_negativa(corrida):
 # ---------------------------------------------------------------------------
 
 ETAPAS_MINIMAS = (
-    "carga", "series", "inspeccion", "particion_cohorte", "features",
-    "modelos", "motor", "metricas", "contraste", "figuras",
+    "carga", "series", "inspeccion", "evento_exogeno", "particion_cohorte",
+    "features", "modelos", "motor", "metricas", "contraste", "figuras",
 )
 
 
