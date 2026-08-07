@@ -69,9 +69,16 @@ def _titulo_de(archivo: Path) -> str:
     return nombre[:1].upper() + nombre[1:]
 
 
+# A st.Page se le pasa la ruta RELATIVA AL SCRIPT PRINCIPAL ("paginas/x.py"),
+# que es la forma documentada. Con `streamlit run tablero/app.py`, __file__
+# queda relativo al CWD: una ruta absoluta o relativa-al-CWD se re-une contra
+# la carpeta del script y termina buscando tablero/tablero/paginas/... — el
+# glob (con base resuelta) solo DESCUBRE los archivos; el nombre va relativo.
 paginas = [
-    st.Page(str(ruta), title=_titulo_de(ruta))
-    for ruta in sorted((Path(__file__).parent / "paginas").glob("[0-9]*_*.py"))
+    st.Page(f"paginas/{ruta.name}", title=_titulo_de(ruta))
+    for ruta in sorted(
+        (Path(__file__).resolve().parent / "paginas").glob("[0-9]*_*.py")
+    )
 ]
 if not paginas:
     st.error("No hay páginas en tablero/paginas/.")
