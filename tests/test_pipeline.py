@@ -146,6 +146,12 @@ def test_el_manifiesto_registra_la_trazabilidad(corrida):
     assert manifiesto["configuracion"]["sha256"], "Falta el hash de la configuración"
     assert manifiesto["dependencias"]["pandas"], "Faltan las versiones cargadas"
     assert "codigo" in manifiesto
+    # El commit tiene que quedar registrado por alguna vía; si no se pudo, el
+    # manifiesto debe decir POR QUÉ en lugar de callarlo.
+    codigo = manifiesto["codigo"]
+    assert codigo.get("commit") or codigo.get("advertencia"), (
+        "Sin commit y sin explicación no hay trazabilidad (RN-6)"
+    )
     assert manifiesto["salidas"], "El manifiesto no lista ninguna salida"
     for salida in manifiesto["salidas"]:
         assert len(salida["sha256"]) == 64
