@@ -209,6 +209,112 @@ def figura3_dispersion(
     return destino
 
 
+def figura5_horizonte(
+    resumen_horizonte: pd.DataFrame,
+    destino: Path,
+    benchmarks: tuple[str, str] = ("ma_12", "naive_m1"),
+    dpi: int = 300,
+) -> Path:
+    """Figura 5 — Curva de degradación: D valorizada contra el horizonte.
+
+    Es la figura del protocolo multihorizonte (RN-4, segunda parte): a un paso
+    los modelos que proyectan línea recta nunca quedan expuestos; esta curva
+    muestra quién sostiene el horizonte de planificación.
+
+    Se destacan cuatro brazos (motor, LightGBM y los dos benchmarks de la
+    empresa) y el resto queda en gris claro con una sola entrada de leyenda:
+    once líneas igualmente marcadas serían ilegibles en escala de grises.
+    El pie declara cuántos orígenes agrega cada horizonte — el extremo derecho
+    de la curva se apoya en un solo origen y se lee con esa cautela.
+
+    El eje vertical se recorta como en la Figura 3: por percentil declarado.
+    Las variantes con factor de crecimiento divergen al componer su pendiente
+    mes a mes (llegan a varios cientos por ciento) y sin recorte aplastarían
+    la banda donde se decide la comparación; qué líneas se salen y hasta dónde
+    llegan queda anotado en el pie, nunca oculto.
+    """
+    _estilo(dpi)
+    tabla = resumen_horizonte.pivot(index="horizonte", columns="modelo", values="D")
+    tabla = tabla.sort_index()
+
+    valores_d = tabla.to_numpy(dtype=float)
+    valores_d = valores_d[~np.isnan(valores_d)]
+    limite = float(np.percentile(valores_d, 90.0)) if valores_d.size else 100.0
+    # Los brazos destacados tienen que verse completos: el recorte jamás puede
+    # cortar la línea del motor o de un benchmark declarado.
+    visibles = [m for m in ("motor", "lightgbm", *benchmarks) if m in tabla.columns]
+    if visibles:
+        limite = max(limite, 1.1 * float(tabla[visibles].max().max()))
+
+    destacados = {
+        "motor": dict(color="black", linewidth=1.9, linestyle="-",
+                      marker="o", markersize=4.5),
+        "lightgbm": dict(color="0.25", linewidth=1.5, linestyle="--",
+                         marker="s", markersize=4),
+        benchmarks[0]: dict(color="0.45", linewidth=1.5, linestyle="-.",
+                            marker="^", markersize=4),
+        benchmarks[1]: dict(color="0.45", linewidth=1.3, linestyle=":",
+                            marker="D", markersize=3.5),
+    }
+
+    figura, eje = plt.subplots(figsize=(7.0, 4.4))
+
+    otros_etiquetados = False
+    for modelo in sorted(tabla.columns):
+        if modelo in destacados:
+            continue
+        eje.plot(
+            tabla.index, tabla[modelo], color="0.82", linewidth=0.9,
+            label=None if otros_etiquetados else "otros brazos", zorder=1,
+        )
+        otros_etiquetados = True
+    for modelo, estilo in destacados.items():
+        if modelo not in tabla.columns:
+            continue
+        eje.plot(tabla.index, tabla[modelo], label=modelo, zorder=3, **estilo)
+
+    eje.set_xlabel("Horizonte h (meses desde el origen)")
+    eje.set_ylabel("D = WMAPE val. + |Bias val.| (%)")
+    eje.set_xticks(list(tabla.index))
+    eje.set_ylim(0, limite)
+    eje.set_title(
+        "Figura 5. Degradación del error con el horizonte\n"
+        "(orígenes rodantes sobre el bloque de prueba; menor es mejor)",
+        loc="left", fontsize=10,
+    )
+    eje.legend(frameon=False, fontsize=8, ncols=2)
+
+    fuera = [
+        (modelo, float(tabla[modelo].max()))
+        for modelo in tabla.columns if float(tabla[modelo].max()) > limite
+    ]
+    nota_recorte = ""
+    if fuera:
+        nota_recorte = (
+            f" Eje vertical recortado en {limite:,.0f} % (percentil 90 de D); "
+            "se salen del recuadro: "
+            + ", ".join(f"{m} (llega a {v:,.0f} %)" for m, v in sorted(fuera))
+            + "."
+        )
+
+    origenes_por_h = (
+        resumen_horizonte.groupby("horizonte")["n_origenes"].max().sort_index()
+    )
+    figura.text(
+        0.01, -0.02,
+        "Cada punto agrega todos los orígenes que alcanzan ese horizonte: "
+        + ", ".join(f"h={h}: {int(n)}" for h, n in origenes_por_h.items())
+        + ". Los horizontes largos se apoyan en pocos orígenes y se leen con "
+        "esa cautela." + nota_recorte,
+        fontsize=7, ha="left", va="top", wrap=True,
+    )
+
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    figura.savefig(destino)
+    plt.close(figura)
+    return destino
+
+
 def figura4_diferencia_critica(
     rangos_medios: pd.Series,
     diferencia_critica: float,

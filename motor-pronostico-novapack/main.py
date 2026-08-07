@@ -23,7 +23,8 @@ if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
 from src import (
-    carga, eventos, features, figuras, inspeccion, metricas, particion, pruebas, series,
+    carga, eventos, features, figuras, inspeccion, metricas, multihorizonte,
+    particion, pruebas, series,
 )
 from src.config import cargar_config
 from src.costos import cargar_costos
@@ -535,6 +536,84 @@ def comando_ejecutar(cfg) -> int:
     )
     _fin(inicio)
 
+    # --- 10b. Evaluación multihorizonte -------------------------------------
+    inicio = _paso(f"10b/{total}", "Evaluación multihorizonte (orígenes rodantes)")
+    resultado_mh = None
+    if cfg.multihorizonte is None or not cfg.multihorizonte.activo:
+        print("      Desactivada por configuración.")
+        reporte.etapa(
+            "evaluacion_multihorizonte", "Evaluación multihorizonte", rf="RF-7",
+            decisiones={"activo": False},
+            notas=["Desactivada por configuración (multihorizonte.activo)."],
+            duracion_s=time.perf_counter() - inicio,
+        )
+    elif not maestro.disponible:
+        print("      SIN maestro de costos: la curva D(h) no puede calcularse.")
+        reporte.etapa(
+            "evaluacion_multihorizonte", "Evaluación multihorizonte", rf="RF-7",
+            decisiones={"activo": True},
+            notas=[
+                "SIN maestro de costos (datos/crudo/costos.csv): las unidades "
+                "difieren entre SKUs y sin valorizar no hay agregación válida "
+                "por horizonte. La etapa se saltó y se declara.",
+            ],
+            duracion_s=time.perf_counter() - inicio,
+        )
+    else:
+        elegido = motor.informe.seleccion.set_index("serie")["modelo_elegido"]
+        resultado_mh = multihorizonte.evaluar(
+            cfg, modelos, elegido, panel, panel_real, panel_entrenamiento,
+            cohorte_ajustada, maestro.costo_por_serie,
+        )
+        for linea in resultado_mh.informe.lineas():
+            print("      " + linea)
+        reporte.tabla("multihorizonte_horizonte.csv", resultado_mh.resumen_horizonte)
+        reporte.tabla("multihorizonte_origen.csv", resultado_mh.resumen_origen)
+        reporte.nota("multihorizonte", {
+            "origenes": resultado_mh.informe.origenes,
+            "horizonte_maximo": resultado_mh.informe.horizonte_maximo,
+            "reentrenos_lightgbm": resultado_mh.informe.reentrenos_lightgbm,
+            "respaldos": resultado_mh.informe.respaldos,
+            "observaciones": resultado_mh.informe.observaciones,
+            "observaciones_con_costo": resultado_mh.informe.observaciones_con_costo,
+            "D_global_pct": resultado_mh.informe.d_global,
+        })
+        reporte.etapa(
+            "evaluacion_multihorizonte",
+            "Evaluación multihorizonte (orígenes rodantes)", rf="RF-7",
+            entrada={"origenes": len(resultado_mh.informe.origenes),
+                     "modelos": len(resultado_mh.informe.modelos)},
+            salida={"observaciones": resultado_mh.informe.observaciones},
+            decisiones={
+                "origenes": cfg.multihorizonte.origenes,
+                "horizonte_maximo": cfg.multihorizonte.horizonte_maximo,
+                "reentrenar_lightgbm": cfg.multihorizonte.reentrenar_lightgbm,
+                "seleccion_motor": "congelada de validación (RN-2)",
+                "proyeccion": "recursiva, la mecánica del sistema en producción; "
+                              "Croston constante (sus estados solo se actualizan "
+                              "con demanda observada)",
+            },
+            conteos={
+                "respaldos_por_modelo": resultado_mh.informe.respaldos,
+                "reentrenos_lightgbm": resultado_mh.informe.reentrenos_lightgbm,
+                "sin_pronostico": resultado_mh.informe.sin_pronostico,
+                "D_global_pct": {
+                    m: round(d, 1)
+                    for m, d in resultado_mh.informe.d_global.items()
+                },
+            },
+            artefactos=["multihorizonte_horizonte.csv", "multihorizonte_origen.csv"],
+            notas=[
+                "Protocolo SEPARADO del principal (RN-4): la Tabla 8 y el "
+                "contraste siguen siendo a un paso; esta etapa mide quién "
+                "sostiene el horizonte de planificación. El objetivo operativo "
+                "es 18 meses; el histórico permite medir hasta h="
+                f"{cfg.multihorizonte.horizonte_maximo}.",
+            ],
+            duracion_s=time.perf_counter() - inicio,
+        )
+    _fin(inicio)
+
     # --- 11. Figuras --------------------------------------------------------
     inicio = _paso(f"11/{total}", "Figuras")
     dpi = int(cfg.figuras.get("dpi", 300))
@@ -550,11 +629,21 @@ def comando_ejecutar(cfg) -> int:
         resultados["friedman"].n_bloques,
         reporte.directorio / "figura4_diferencia_critica.png", dpi=dpi,
     ))
+    artefactos_figuras = ["figura2_error.png", "figura3_dispersion.png",
+                          "figura4_diferencia_critica.png"]
+    if resultado_mh is not None:
+        reporte.figura(figuras.figura5_horizonte(
+            resultado_mh.resumen_horizonte,
+            reporte.directorio / "figura5_horizonte.png",
+            benchmarks=(str(cfg.modelos["benchmark_promedio_movil"]),
+                        str(cfg.modelos["benchmark_naive"])),
+            dpi=dpi,
+        ))
+        artefactos_figuras.append("figura5_horizonte.png")
     reporte.etapa(
         "figuras", "Figuras del documento", rf="RF-9",
         decisiones={"dpi": dpi, "escala_grises": True},
-        artefactos=["figura2_error.png", "figura3_dispersion.png",
-                    "figura4_diferencia_critica.png"],
+        artefactos=artefactos_figuras,
         duracion_s=time.perf_counter() - inicio,
     )
     _fin(inicio)

@@ -33,6 +33,8 @@ SALIDAS_ESPERADAS = (
     "tabla_valorizada.csv",
     "pruebas_estadisticas.txt",
     "seleccion_motor.csv",
+    "multihorizonte_horizonte.csv",
+    "multihorizonte_origen.csv",
     "victorias_por_modelo.csv",
     "rangos_friedman.csv",
     "parametros_por_serie.csv",
@@ -40,6 +42,7 @@ SALIDAS_ESPERADAS = (
     "figura2_error.png",
     "figura3_dispersion.png",
     "figura4_diferencia_critica.png",
+    "figura5_horizonte.png",
     "manifiesto.json",
 )
 
@@ -198,7 +201,8 @@ def test_ningun_modelo_predice_demanda_negativa(corrida):
 
 ETAPAS_MINIMAS = (
     "carga", "series", "inspeccion", "evento_exogeno", "particion_cohorte",
-    "features", "modelos", "motor", "metricas", "contraste", "figuras",
+    "features", "modelos", "motor", "metricas", "contraste",
+    "evaluacion_multihorizonte", "figuras",
 )
 
 

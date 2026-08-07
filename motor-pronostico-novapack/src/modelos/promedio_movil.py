@@ -12,10 +12,12 @@ están implementadas en el sistema en producción.
 
 Una precisión importante para la memoria: el promedio móvil del sistema en
 producción es **recursivo** (se realimenta con sus propios pronósticos y por eso
-converge de forma asintótica). Aquí no lo es, porque la RN-4 fija la evaluación
-a un paso con el valor real del mes anterior. A un mes de horizonte las dos
-formulaciones coinciden exactamente; la diferencia solo aparecería con horizonte
-mayor que uno, y ese caso no forma parte de este experimento.
+converge de forma asintótica). Este módulo implementa la fórmula a un paso,
+porque la RN-4 fija así la evaluación principal; a un mes de horizonte las dos
+formulaciones coinciden exactamente. El caso recursivo con horizonte mayor que
+uno SÍ forma parte del experimento, pero vive en ``src/multihorizonte.py``: la
+proyección multihorizonte extiende el panel y realimenta estas mismas fórmulas
+mes a mes, que es literalmente la recursión del sistema en producción.
 """
 
 from __future__ import annotations

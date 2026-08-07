@@ -78,6 +78,17 @@ export interface NotasMotor {
   acierto: AciertoMotor;
 }
 
+/** Nota `multihorizonte` del manifiesto (RN-4, protocolo separado). */
+export interface NotasMultihorizonte {
+  origenes: string[];
+  horizonte_maximo: number;
+  reentrenos_lightgbm: number;
+  respaldos: Record<string, number>;
+  observaciones: number;
+  observaciones_con_costo: number;
+  D_global_pct: Record<string, number>;
+}
+
 export interface Manifiesto {
   generado_en: string;
   duracion_segundos: number;
@@ -107,6 +118,7 @@ export interface Manifiesto {
     wilcoxon?: ResultadoWilcoxon[];
     lightgbm_mejor_iteracion?: number;
     respaldos_por_modelo?: Record<string, number>;
+    multihorizonte?: NotasMultihorizonte;
   } & Record<string, unknown>;
   salidas: { archivo: string; bytes: number; sha256: string }[];
 }

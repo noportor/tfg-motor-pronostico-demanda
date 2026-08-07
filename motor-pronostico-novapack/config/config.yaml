@@ -204,6 +204,32 @@ features:
   categoricas: ["sku", "canal", "regional"]
 
 # -----------------------------------------------------------------------------
+# 7b. Evaluación multihorizonte (RN-4, segunda parte)
+# -----------------------------------------------------------------------------
+# El protocolo principal evalúa a UN paso (caso h=1). Pero el objetivo operativo
+# del pronóstico es el horizonte de PLANIFICACIÓN: la corrida mensual del
+# sistema en producción proyecta 18 meses, y a ese horizonte un modelo que
+# proyecta línea recta ignora la campaña escolar. La RN-4 exige que esta
+# evaluación se aplique POR IGUAL a todos los modelos y se reporte POR SEPARADO
+# — este bloque hace exactamente eso.
+#
+#   origenes: "rodantes" — cada mes del bloque de prueba es un origen (la
+#             operación real re-pronostica todo el horizonte cada mes);
+#             "fijo" — un solo origen al cierre de validación (ablación).
+#   horizonte_maximo: 12 — el objetivo operativo es 18, pero el histórico
+#             cierra en mar-2026: h=12 es el máximo medible con realidad
+#             contra la que comparar. Se declara en la memoria.
+#   reentrenar_lightgbm: el sistema en producción re-entrena el modelo global
+#             en cada corrida mensual; aquí se replica, con el número de
+#             árboles CONGELADO del ajuste base (la parada temprana no se
+#             repite: re-mirar validación en cada origen sería re-optimizar).
+multihorizonte:
+  activo: true
+  horizonte_maximo: 12
+  origenes: "rodantes"
+  reentrenar_lightgbm: true
+
+# -----------------------------------------------------------------------------
 # 8. Pruebas estadísticas (RF-8)
 # -----------------------------------------------------------------------------
 pruebas:
