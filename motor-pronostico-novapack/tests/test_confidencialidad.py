@@ -55,7 +55,9 @@ PATRONES_PROHIBIDOS: list[tuple[str, str]] = [
     ("nombre del sistema de pronóstico interno", r"(?i)\bthales\b"),
     ("nombre de la base de datos corporativa", r"(?i)\bbixdb\b|\bbix_v2\b|\bdsxdbodoo\b"),
     ("esquema interno", r"(?i)\bhub_thales\b|\bhub_core\b|\bbi_analytics\b"),
-    ("dirección IP", r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
+    # 0.0.0.0 (escucha universal) y 127.* (loopback) no revelan nada: son las
+    # direcciones de cualquier Dockerfile del mundo. El patrón caza las demás.
+    ("dirección IP", r"\b(?!0\.0\.0\.0\b)(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b"),
     ("dominio corporativo", r"(?i)[\w.-]+@[\w.-]*madepa[\w.-]*"),
     ("usuario de base de datos", r"(?i)\bnicolas_oporto\b|\bpapelera_ro\b|\bmadepa_bi\b"),
     ("regional real", r"(?i)\bSANTA\s+CRUZ\b|\bCOCHABAMBA\b|\bLA\s+PAZ\b|\bTARIJA\b"),
