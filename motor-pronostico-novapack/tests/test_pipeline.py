@@ -86,7 +86,8 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
 
         canal = ("CANAL-1", "CANAL-2")[i % 2]
         regional = ("REGIONAL-A", "REGIONAL-B", "REGIONAL-C")[i % 3]
-        for fecha, valor in zip(fechas, valores):
+        precio_base = round(1.0 + (numero_sku % 7) * 0.8, 2)
+        for t, (fecha, valor) in enumerate(zip(fechas, valores)):
             if valor <= 0:
                 continue  # solo se registran los meses CON venta
             filas.append({
@@ -96,6 +97,8 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
                 "regional": regional,
                 "cantidad": round(float(valor), 2),
                 "categoria": categoria,
+                "precio": round(precio_base * (1 + 0.002 * t), 4),
+                "perdidas": round(float(valor) * 0.1, 2) if t % 9 == 0 else 0.0,
             })
 
     # Dos series sanas FUERA de la población objetivo: si el filtro no las
@@ -111,6 +114,8 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
                 "regional": regional,
                 "cantidad": 120.0,
                 "categoria": "LIMPIEZA",
+                "precio": 2.5,
+                "perdidas": 0.0,
             })
 
     pd.DataFrame(filas).to_csv(ruta, index=False)
@@ -126,6 +131,29 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
     ]
     combinaciones.to_csv(ruta.parent / "costos.csv", index=False)
 
+    # Fuentes exógenas sintéticas (features v2): quiebres SOLO en el tramo
+    # final (como la fuente real, que nace a mitad del período) y un tipo de
+    # cambio que arranca fijo y se vuelve variable.
+    quiebres = []
+    combos_sr = (
+        pd.DataFrame(filas)[["sku", "regional"]].drop_duplicates().reset_index(drop=True)
+    )
+    for k, fila_sr in combos_sr.iterrows():
+        for fecha in fechas[60:]:
+            quiebres.append({
+                "fecha": fecha.date().isoformat(),
+                "sku": fila_sr["sku"],
+                "regional": fila_sr["regional"],
+                "semanas_medidas": 4,
+                "semanas_en_cero": (k + fecha.month) % 5 == 0 and 2 or 0,
+            })
+    pd.DataFrame(quiebres).to_csv(ruta.parent / "quiebres.csv", index=False)
+
+    tc = [{"fecha": fecha.date().isoformat(),
+           "tc": round(6.96 if t < 72 else 6.96 + 0.35 * (t - 72), 2)}
+          for t, fecha in enumerate(fechas[24:], start=24)]
+    pd.DataFrame(tc).to_csv(ruta.parent / "tipo_cambio.csv", index=False)
+
 
 @pytest.fixture(scope="module")
 def corrida(tmp_path_factory, request):
@@ -138,6 +166,8 @@ def corrida(tmp_path_factory, request):
     crudo = json_seguro(real.crudo)
     crudo["datos"]["archivo"] = str(datos)
     crudo["salidas"]["directorio"] = str(base / "salidas")
+    crudo["features"]["archivo_quiebres"] = str(base / "quiebres.csv")
+    crudo["features"]["archivo_tipo_cambio"] = str(base / "tipo_cambio.csv")
     # LightGBM con muy pocos árboles: aquí interesa que el pegamento funcione,
     # no la calidad del ajuste.
     crudo["modelos"]["lightgbm"]["num_boost_round"] = 40
@@ -372,6 +402,36 @@ def test_inspeccion_json_refleja_el_informe(corrida):
     for clave in ("rango_fechas", "n_sku", "n_combinaciones",
                   "estacionalidad_mensual", "volumen_por_gestion"):
         assert clave in datos, f"inspeccion.json no tiene '{clave}'"
+
+
+def test_humo_del_ajuste_de_hiperparametros(corrida, tmp_path):
+    """El script de tuning corre de punta a punta sobre la corrida sintética
+    (2 ensayos) y emite sus artefactos parseables. Es la única cobertura del
+    contrato Optuna/espacio/artefactos que no depende de la corrida real."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import ajustar_lightgbm
+
+    codigo = ajustar_lightgbm.main([
+        "--config", str(corrida.ruta_config),
+        "--n-trials", "2",
+        "--destino", str(tmp_path / "tuning"),
+    ])
+    assert codigo == 0
+
+    ensayos = pd.read_csv(tmp_path / "tuning" / "lightgbm_tuning_ensayos.csv")
+    assert len(ensayos) == 2
+    assert {"objective", "D_interna", "mejor_iteracion"} <= set(ensayos.columns)
+
+    mejor = json.loads(
+        (tmp_path / "tuning" / "lightgbm_tuning_mejor.json").read_text(
+            encoding="utf-8")
+    )
+    assert mejor["n_trials"] == 2
+    assert mejor["mejores_parametros"]
+    assert mejor["sha256_datos"], "El hash del snapshot debe quedar certificado"
 
 
 def test_registrar_dos_veces_la_misma_etapa_falla(cfg):

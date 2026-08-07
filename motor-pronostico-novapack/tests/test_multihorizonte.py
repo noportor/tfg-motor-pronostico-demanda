@@ -297,6 +297,49 @@ def test_config_valida_motor_seleccion(cfg):
     assert valida.modelos["motor_seleccion"] == "multihorizonte"
 
 
+def test_exogenas_futuras_persisten_el_valor_del_origen(cfg):
+    """La política declarada del multihorizonte: las exógenas futuras valen su
+    último valor CONOCIDO al origen — nunca el valor real futuro (fuga) ni un
+    cero inventado (el defecto del sistema en producción)."""
+    from types import SimpleNamespace
+
+    from src.multihorizonte import ProyectorLightGBM
+
+    meses = pd.period_range("2024-01", periods=6, freq="M")
+    origen = pd.Period("2024-03", "M")
+
+    precio = pd.DataFrame({
+        "serie": ["S"] * 6, "periodo": meses,
+        # Tras el origen (2024-03, valor 3.0) el precio REAL salta a 100: si la
+        # persistencia mirara el futuro, se delataría acá.
+        "precio": [1.0, 2.0, 3.0, 100.0, 100.0, 100.0],
+    })
+    tc = pd.Series([6.0, 7.0, 8.0, 50.0, 50.0, 50.0], index=meses)
+    exogenas = SimpleNamespace(
+        precio=precio, perdidas=None, quiebres=None, tipo_cambio=tc,
+        categoria_por_serie=None,
+    )
+
+    cohorte = panel_de({"S": [10.0] * 6}, inicio="2024-01")
+    proyector = ProyectorLightGBM(
+        cfg, cohorte, SimpleNamespace(tabla=None, booster=None,
+                                      mejor_iteracion=None),
+        exogenas,
+    )
+    persistidas = proyector._exogenas_persistidas(origen, horizonte=3)
+
+    futuros = persistidas.precio.loc[persistidas.precio["periodo"] > origen]
+    assert len(futuros) == 3
+    assert (futuros["precio"] == 3.0).all(), (
+        "El precio futuro debe persistir el valor del ORIGEN (3.0), no el "
+        "real futuro (100.0) ni cero"
+    )
+    tc_futuro = persistidas.tipo_cambio.loc[
+        persistidas.tipo_cambio.index > origen
+    ]
+    assert (tc_futuro == 8.0).all()
+
+
 def test_grupo_sin_demanda_queda_visible_no_descartado():
     obs = pd.DataFrame({
         "modelo": ["x", "x"],

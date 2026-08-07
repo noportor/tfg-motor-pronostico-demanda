@@ -48,6 +48,28 @@ origen:
   # del rubro (no identifican a la empresa) y se escriben tal cual.
   columna_categoria: null
 
+  # Opcionales. Precio mensual y venta perdida del mes, de la MISMA tabla:
+  # habilitan las features exógenas del brazo de aprendizaje automático (el
+  # snapshot gana las columnas `precio` y `perdidas`).
+  columna_precio: null
+  columna_perdidas: null
+
+  # Opcional. Inventario semanal para mensualizar QUIEBRES de stock (semanas
+  # con existencia cero por sku-regional-mes -> datos/crudo/quiebres.csv, con
+  # los mismos seudónimos que las ventas).
+  # inventario:
+  #   tabla: "esquema.inventario_semanal"
+  #   columnas: {sku: "...", regional: "...", fecha: "...", cantidad: "..."}
+  inventario: null
+
+  # Opcional. Tipo de cambio mensual -> datos/crudo/tipo_cambio.csv. Los meses
+  # anteriores al primero de la fuente se completan en el pipeline con el
+  # régimen fijo declarado en config.yaml (features.tc_regimen_fijo).
+  # tipo_cambio:
+  #   tabla: "esquema.tipo_cambio_mensual"
+  #   columnas: {fecha: "...", tc: "..."}
+  tipo_cambio: null
+
   # Opcional. Columna adicional cuyo total se reporta por tramo de años antes de
   # extraer, como control de integridad.
   #

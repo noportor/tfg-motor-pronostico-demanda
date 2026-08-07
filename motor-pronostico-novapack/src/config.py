@@ -128,6 +128,10 @@ class ConfigPoblacion:
     categorias: tuple[str, ...]
 
 
+V2_CLAVES = ("categoria", "precio", "perdidas", "quiebres", "tipo_cambio",
+             "derivadas")
+
+
 @dataclass(frozen=True)
 class ConfigFeatures:
     rezagos: list[int]
@@ -136,6 +140,10 @@ class ConfigFeatures:
     incluir_anio: bool
     incluir_tendencia: bool
     categoricas: list[str]
+    v2: dict[str, bool]
+    tc_regimen_fijo: float
+    archivo_quiebres: str | None
+    archivo_tipo_cambio: str | None
 
 
 @dataclass(frozen=True)
@@ -447,6 +455,14 @@ def cargar_config(
         )
 
     f = crudo["features"]
+    v2_crudo = f.get("v2") or {}
+    desconocidas = sorted(set(v2_crudo) - set(V2_CLAVES))
+    if desconocidas:
+        raise ErrorDeConfiguracion(
+            f"features.v2 tiene claves desconocidas: {desconocidas}. "
+            f"Válidas: {sorted(V2_CLAVES)} (un error tipográfico apagaría un "
+            f"grupo de features en silencio)."
+        )
     features = ConfigFeatures(
         rezagos=[int(x) for x in _exigir(f, "rezagos", "features")],
         ventanas_moviles=[int(x) for x in _exigir(f, "ventanas_moviles", "features")],
@@ -454,11 +470,22 @@ def cargar_config(
         incluir_anio=bool(f.get("incluir_anio", True)),
         incluir_tendencia=bool(f.get("incluir_tendencia", True)),
         categoricas=[str(x) for x in f.get("categoricas", [])],
+        v2={clave: bool(v2_crudo.get(clave, False)) for clave in V2_CLAVES},
+        tc_regimen_fijo=float(f.get("tc_regimen_fijo", 6.96)),
+        archivo_quiebres=(str(f["archivo_quiebres"])
+                          if f.get("archivo_quiebres") else None),
+        archivo_tipo_cambio=(str(f["archivo_tipo_cambio"])
+                             if f.get("archivo_tipo_cambio") else None),
     )
     if min(features.rezagos) < 1:
         raise ErrorDeConfiguracion(
             "Todos los rezagos deben ser >= 1: un rezago 0 sería el propio valor "
             "que se quiere predecir (fuga temporal, RN-3)."
+        )
+    if features.tc_regimen_fijo <= 0:
+        raise ErrorDeConfiguracion(
+            f"features.tc_regimen_fijo debe ser positivo; "
+            f"llegó {features.tc_regimen_fijo}."
         )
 
     pr = crudo["pruebas"]

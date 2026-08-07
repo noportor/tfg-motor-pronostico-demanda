@@ -234,6 +234,12 @@ def cargar(cfg: Config, ruta: str | Path | None = None) -> tuple[pd.DataFrame, I
         df["categoria"] = (
             bruto[cfg.datos.columnas["categoria"]].astype("string").str.strip()
         )
+    # Exógenas de la misma tabla (features v2). NaN = sin dato, nunca 0.
+    for opcional in ("precio", "perdidas"):
+        if opcional in cfg.datos.columnas:
+            df[opcional] = pd.to_numeric(
+                bruto[cfg.datos.columnas[opcional]], errors="coerce"
+            )
 
     # --- Conversión de tipos, contando lo que no se pudo convertir -----------
     # Primero se intenta con formato homogéneo, que es lo rápido para cientos de

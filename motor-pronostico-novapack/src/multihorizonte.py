@@ -60,7 +60,7 @@ import numpy as np
 import pandas as pd
 
 from .config import Config
-from .features import construir_features, nombres_de_features
+from .features import categoricas_de, construir_features, nombres_de_features
 from .modelos.base import truncar_en_cero
 
 
@@ -131,11 +131,13 @@ class ProyectorLightGBM:
       sería fuga a partir de h=2.
     """
 
-    def __init__(self, cfg: Config, cohorte_ajustada: pd.DataFrame, modelo_base):
+    def __init__(self, cfg: Config, cohorte_ajustada: pd.DataFrame, modelo_base,
+                 exogenas=None):
         self.cfg = cfg
         self.base = modelo_base
+        self.exogenas = exogenas
         self.columnas = nombres_de_features(cfg)
-        self.categoricas = [c for c in cfg.features.categoricas if c in self.columnas]
+        self.categoricas = [c for c in categoricas_de(cfg) if c in self.columnas]
         crudos = cfg.modelos["lightgbm"]
         self.parametros = {
             k: v for k, v in crudos.items()
@@ -150,6 +152,56 @@ class ProyectorLightGBM:
         self.reentrenos = 0
         self._cache_origen: pd.Period | None = None
         self._cache_booster = None
+
+    def _exogenas_persistidas(self, origen: pd.Period, horizonte: int):
+        """Extiende las fuentes exógenas hacia el futuro con PERSISTENCIA.
+
+        Es el reemplazo honesto del defecto del sistema en producción (que
+        proyecta con precio=0 y quiebre=0): para los meses futuros, cada
+        exógena vale su último valor CONOCIDO al origen — el supuesto de
+        persistencia, declarado. Solo se usa lo anterior al origen (sin fuga).
+        """
+        if self.exogenas is None:
+            return None
+        import copy
+
+        meses = pd.period_range(origen + 1, origen + horizonte, freq="M")
+        extendidas = copy.copy(self.exogenas)
+
+        def _extender_por_clave(frame, claves, columnas_valor):
+            if frame is None:
+                return None
+            conocido = frame.loc[frame["periodo"] <= origen]
+            # «Último valor CONOCIDO»: las filas cuyo valor es NaN no cuentan
+            # como conocimiento — persistir un NaN taparía al último dato real.
+            ultimo = (
+                conocido.dropna(subset=list(columnas_valor))
+                .sort_values("periodo", kind="stable")
+                .drop_duplicates(claves, keep="last")
+            )
+            futuras = []
+            for mes in meses:
+                futuras.append(ultimo[[*claves, *columnas_valor]].assign(periodo=mes))
+            return pd.concat([conocido, *futuras], ignore_index=True)
+
+        extendidas.precio = _extender_por_clave(
+            self.exogenas.precio, ["serie"], ["precio"]
+        )
+        extendidas.perdidas = _extender_por_clave(
+            self.exogenas.perdidas, ["serie"], ["perdidas"]
+        )
+        extendidas.quiebres = _extender_por_clave(
+            self.exogenas.quiebres, ["sku", "regional"],
+            ["semanas_medidas", "semanas_en_cero"],
+        )
+        tc = self.exogenas.tipo_cambio
+        if tc is not None:
+            conocido = tc.loc[tc.index <= origen]
+            futuro = pd.Series(
+                float(conocido.iloc[-1]) if len(conocido) else np.nan, index=meses
+            )
+            extendidas.tipo_cambio = pd.concat([conocido, futuro])
+        return extendidas
 
     def _booster_para(self, origen: pd.Period, reentrenar: bool):
         """Devuelve (booster, num_iteration) para el origen dado."""
@@ -177,13 +229,15 @@ class ProyectorLightGBM:
     ) -> pd.DataFrame:
         booster, num_iteracion = self._booster_para(origen, reentrenar)
         extendido = self.largo.loc[self.largo["periodo"] <= origen]
+        exogenas = self._exogenas_persistidas(origen, horizonte)
         salida: dict[pd.Period, pd.Series] = {}
 
         for h in range(1, horizonte + 1):
             mes = origen + h
             nuevas = self.identidad.assign(periodo=mes, y=np.nan)
             tabla = construir_features(
-                pd.concat([extendido, nuevas], ignore_index=True), self.cfg
+                pd.concat([extendido, nuevas], ignore_index=True), self.cfg,
+                exogenas,
             )
             filas = tabla.loc[tabla["periodo"] == mes]
             predicho = booster.predict(
@@ -282,6 +336,7 @@ def criterio_seleccion_multihorizonte(
     panel_real: pd.DataFrame,
     panel_entrenamiento: pd.DataFrame,
     cohorte_ajustada: pd.DataFrame,
+    exogenas=None,
 ) -> pd.DataFrame:
     """Matriz serie × candidato con el error MULTIHORIZONTE de validación.
 
@@ -315,7 +370,7 @@ def criterio_seleccion_multihorizonte(
     regla = str(cfg.modelos.get("motor_regla", "mae"))
 
     proyector_lgbm = (
-        ProyectorLightGBM(cfg, cohorte_ajustada, modelos["lightgbm"])
+        ProyectorLightGBM(cfg, cohorte_ajustada, modelos["lightgbm"], exogenas)
         if "lightgbm" in modelos else None
     )
 
@@ -409,6 +464,7 @@ def evaluar(
     panel_entrenamiento: pd.DataFrame,
     cohorte_ajustada: pd.DataFrame,
     costo_por_serie: pd.Series,
+    exogenas=None,
 ) -> ResultadoMultihorizonte:
     """Corre el protocolo multihorizonte completo y agrega la curva D(h).
 
@@ -434,7 +490,7 @@ def evaluar(
 
     media_entrenamiento = panel_entrenamiento.mean(axis=0, skipna=True)
     proyector_lgbm = (
-        ProyectorLightGBM(cfg, cohorte_ajustada, modelos["lightgbm"])
+        ProyectorLightGBM(cfg, cohorte_ajustada, modelos["lightgbm"], exogenas)
         if "lightgbm" in modelos else None
     )
 

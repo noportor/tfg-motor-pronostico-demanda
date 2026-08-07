@@ -17,3 +17,4 @@ scikit-posthocs==0.14.0
 openpyxl==3.1.5
 PyYAML==6.0.2
 pytest==8.3.4
+optuna==4.1.0

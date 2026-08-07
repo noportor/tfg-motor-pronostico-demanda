@@ -26,6 +26,7 @@ from src import (
     carga, eventos, features, figuras, inspeccion, metricas, multihorizonte,
     particion, pruebas, series, unidad_analisis,
 )
+from src.exogenas import cargar_exogenas
 from src.config import cargar_config
 from src.costos import cargar_costos
 from src.modelos import construir_modelos
@@ -348,7 +349,10 @@ def comando_ejecutar(cfg) -> int:
 
     # --- 6. Features --------------------------------------------------------
     inicio = _paso(f"6/{total}", "Construyendo features (sin fuga temporal)")
-    tabla = features.construir_features(cohorte_ajustada, cfg)
+    exogenas = cargar_exogenas(cfg, df)
+    for linea in exogenas.informe.lineas():
+        print("      " + linea)
+    tabla = features.construir_features(cohorte_ajustada, cfg, exogenas)
     print(f"      {len(tabla):,} filas × {len(features.nombres_de_features(cfg))} features")
     reporte.etapa(
         "features", "Variables derivadas, sin fuga temporal", rf="RF-5",
@@ -363,10 +367,23 @@ def comando_ejecutar(cfg) -> int:
             "calendario": {"mes": cfg.features.incluir_mes,
                            "anio": cfg.features.incluir_anio,
                            "tendencia": cfg.features.incluir_tendencia},
-            "categoricas": cfg.features.categoricas,
+            "categoricas": features.categoricas_de(cfg),
+            "v2": cfg.features.v2,
+            "tc_regimen_fijo": cfg.features.tc_regimen_fijo,
+        },
+        conteos={
+            "series_con_precio": exogenas.informe.series_con_precio,
+            "celdas_con_perdidas": exogenas.informe.filas_con_perdidas,
+            "filas_quiebres": exogenas.informe.filas_quiebres,
+            "meses_tc_fuente": exogenas.informe.meses_tc_fuente,
+            "meses_tc_regimen_fijo": exogenas.informe.meses_tc_regimen_fijo,
+            "meses_tc_cola_arrastrada": exogenas.informe.meses_tc_cola_arrastrada,
         },
         notas=["Toda feature usa solo información ANTERIOR al mes que predice "
-               "(RN-3); la garantía es tests/test_features.py."],
+               "(RN-3); la garantía es tests/test_features.py. Las exógenas "
+               "ausentes producen columnas NaN («sin dato» declarado), nunca "
+               "ceros. En el multihorizonte, las exógenas futuras valen su "
+               "último valor conocido al origen (persistencia declarada)."],
         duracion_s=time.perf_counter() - inicio,
     )
     _fin(inicio)
@@ -452,7 +469,8 @@ def comando_ejecutar(cfg) -> int:
         print("      Ventana de selección: MULTIHORIZONTE sobre validación "
               "(ablación pre-registrada)")
         criterio_externo = multihorizonte.criterio_seleccion_multihorizonte(
-            cfg, modelos, panel, panel_real, panel_entrenamiento, cohorte_ajustada,
+            cfg, modelos, panel, panel_real, panel_entrenamiento,
+            cohorte_ajustada, exogenas,
         )
     motor = Motor(cfg, predicciones, panel_real)
     motor.ajustar(panel_entrenamiento, panel_validacion,
@@ -720,7 +738,7 @@ def comando_ejecutar(cfg) -> int:
         elegido = motor.informe.seleccion.set_index("serie")["modelo_elegido"]
         resultado_mh = multihorizonte.evaluar(
             cfg, modelos, elegido, panel, panel_real, panel_entrenamiento,
-            cohorte_ajustada, maestro.costo_por_serie,
+            cohorte_ajustada, maestro.costo_por_serie, exogenas,
         )
         for linea in resultado_mh.informe.lineas():
             print("      " + linea)
