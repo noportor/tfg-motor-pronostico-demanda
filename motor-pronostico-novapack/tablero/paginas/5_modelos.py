@@ -59,10 +59,15 @@ with derecha:
 
 st.divider()
 
-# --- Parámetros elegidos por serie -------------------------------------------
-st.markdown("**Qué parámetros ganaron, serie por serie**")
-parametros = corrida.tabla("parametros_por_serie.csv")
-if parametros is not None and not parametros.empty:
+# --- Parámetros elegidos por serie (fragmento) -------------------------------
+@st.fragment
+def parametros_por_serie() -> None:
+    st.markdown("**Qué parámetros ganaron, serie por serie**")
+    parametros = corrida.tabla("parametros_por_serie.csv")
+    if parametros is None or parametros.empty:
+        st.info("Esta corrida no registró parámetros por serie.")
+        return
+
     combinaciones = (
         parametros[["modelo", "parametro"]].drop_duplicates().itertuples(index=False)
     )
@@ -75,7 +80,8 @@ if parametros is not None and not parametros.empty:
         & (parametros["parametro"] == parametro_sel)
     ]
     # La rejilla es discreta: contar series por valor dice más que un
-    # histograma continuo. Un solo tono: es una única serie.
+    # histograma continuo (y al navegador viaja el CONTEO, no las series).
+    # Un solo tono: es una única serie.
     conteo = (
         seleccion.groupby("valor").size().rename("series").reset_index()
     )
@@ -94,8 +100,9 @@ if parametros is not None and not parametros.empty:
         "Un α alto = la serie pide reaccionar rápido; α bajo = suavizar. La "
         "forma de esta distribución es un retrato del portafolio."
     )
-else:
-    st.info("Esta corrida no registró parámetros por serie.")
+
+
+parametros_por_serie()
 
 st.divider()
 

@@ -64,10 +64,13 @@ if reparto:
     )
     st.altair_chart(estilo.aplicar(grafico), use_container_width=True)
 
-# --- Evidencia por serie -----------------------------------------------------
-st.markdown("**La selección, serie por serie** — `seleccion_motor.csv`")
-seleccion = corrida.tabla("seleccion_motor.csv")
-if seleccion is not None and not seleccion.empty:
+# --- Evidencia por serie (fragmento) -----------------------------------------
+@st.fragment
+def evidencia_por_serie() -> None:
+    st.markdown("**La selección, serie por serie** — `seleccion_motor.csv`")
+    seleccion = corrida.tabla("seleccion_motor.csv")
+    if seleccion is None or seleccion.empty:
+        return
     filtro = st.multiselect(
         "Filtrar por modelo elegido",
         sorted(seleccion["modelo_elegido"].dropna().unique()),
@@ -80,6 +83,9 @@ if seleccion is not None and not seleccion.empty:
         f"{len(visible):,} series. Las columnas de modelo son el MAE de cada "
         "candidato EN VALIDACIÓN; el motor eligió el mínimo."
     )
-    st.dataframe(visible.head(1000).round(3), use_container_width=True, hide_index=True)
-    if len(visible) > 1000:
-        st.caption("Se muestran las primeras 1.000; el CSV completo está en salidas/.")
+    st.dataframe(visible.head(500).round(3), use_container_width=True, hide_index=True)
+    if len(visible) > 500:
+        st.caption("Se muestran las primeras 500; el CSV completo está en salidas/.")
+
+
+evidencia_por_serie()
