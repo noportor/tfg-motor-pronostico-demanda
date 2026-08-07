@@ -30,6 +30,7 @@ SALIDAS_ESPERADAS = (
     "errores_por_serie.csv",
     "resumen_metricas.csv",
     "tabla8_resultados.csv",
+    "tabla_valorizada.csv",
     "pruebas_estadisticas.txt",
     "seleccion_motor.csv",
     "victorias_por_modelo.csv",
@@ -78,6 +79,17 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
             })
 
     pd.DataFrame(filas).to_csv(ruta, index=False)
+
+    # Maestro de costos sintético junto al archivo de ventas: habilita la suite
+    # valorizada en la corrida de prueba (RN-1: sintético, solo en tests).
+    combinaciones = (
+        pd.DataFrame(filas)[["sku", "canal", "regional"]].drop_duplicates()
+    )
+    combinaciones["costo_unitario"] = [
+        round(0.5 + 3.7 * ((i * 7919) % 100) / 100, 2)
+        for i in range(len(combinaciones))
+    ]
+    combinaciones.to_csv(ruta.parent / "costos.csv", index=False)
 
 
 @pytest.fixture(scope="module")

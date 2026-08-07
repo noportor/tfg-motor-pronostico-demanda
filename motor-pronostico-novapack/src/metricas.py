@@ -212,6 +212,113 @@ def tabla8(resumen_completo: pd.DataFrame) -> pd.DataFrame:
     return resumen_completo[presentes].rename(columns=columnas)
 
 
+def suite_valorizada(
+    errores: dict[str, pd.DataFrame],
+    costo_por_serie: pd.Series,
+    orden: list[str] | None = None,
+) -> pd.DataFrame:
+    """Métricas VALORIZADAS por costo unitario — la agregación entre SKUs.
+
+    Las unidades difieren entre SKUs: sumar o promediar errores en unidades
+    entre productos no tiene sentido físico. Llevado a dinero
+    (``|error| × costo``) todo queda en la misma unidad y la agregación es
+    legítima. Por serie:
+
+    - ``demanda_val = costo × media_real × n_obs``  (demanda del bloque, en Bs)
+    - ``error_val   = costo × mae × n_obs``          (error absoluto total, Bs)
+    - ``pred_val    = costo × media_pred × n_obs``
+
+    Y por modelo:
+
+    - **WMAPE_val** = Σ error_val / Σ demanda_val — el % de la demanda
+      valorizada que se erra (es el WMAE normalizado).
+    - **Bias_val**  = (Σ pred_val − Σ demanda_val) / Σ demanda_val — sobre o
+      sub-pronóstico sistemático en dinero.
+    - **RMSE_val**  = raíz del MSE agrupado de los errores valorizados,
+      reconstruido exacto desde los RMSE por serie
+      (MSE agrupado = Σ n·(costo·rmse)² / Σ n). Agrupar aquí SÍ es válido:
+      misma unidad.
+    - **D = WMAPE_val + |Bias_val|** — la MÉTRICA DE DECISIÓN del estudio:
+      ambos términos son porcentajes del mismo denominador (la suma es
+      dimensionalmente coherente, a diferencia del MAE+|Bias| en unidades) y
+      captura el objetivo del pronóstico: errar poco Y sin sesgo sistemático.
+      Es además la regla de selección declarada por la empresa.
+
+    Las series sin costo se excluyen de esta suite y su peso se declara en
+    ``cobertura`` (regla de outliers visibles). El contraste estadístico NO
+    depende de esto: al ser pareado por serie, es invariante a multiplicar
+    cada serie por una constante positiva.
+    """
+    if costo_por_serie.empty:
+        raise ValueError(
+            "No hay maestro de costos: la suite valorizada no puede calcularse."
+        )
+
+    nombres = orden or list(errores)
+    filas = []
+    for nombre in nombres:
+        if nombre not in errores:
+            continue
+        tabla = errores[nombre].copy()
+        tabla["costo"] = costo_por_serie.reindex(tabla.index)
+        con_costo = tabla.dropna(subset=["costo"])
+
+        demanda = float(
+            (con_costo["costo"] * con_costo["media_real"]
+             * con_costo["n_observaciones"]).sum()
+        )
+        error = float(
+            (con_costo["costo"] * con_costo["mae"]
+             * con_costo["n_observaciones"]).sum()
+        )
+        pred = float(
+            (con_costo["costo"] * con_costo["media_predicha"]
+             * con_costo["n_observaciones"]).sum()
+        )
+        n_total = float(con_costo["n_observaciones"].sum())
+        mse_val = float(
+            (con_costo["n_observaciones"]
+             * (con_costo["costo"] * con_costo["rmse"]) ** 2).sum()
+        ) / n_total if n_total else float("nan")
+
+        if demanda <= 0:
+            raise ValueError(
+                f"La demanda valorizada del modelo '{nombre}' no es positiva; "
+                f"revisá el maestro de costos."
+            )
+
+        wmape = 100.0 * error / demanda
+        bias = 100.0 * (pred - demanda) / demanda
+        filas.append({
+            "modelo": nombre,
+            "series_con_costo": int(len(con_costo)),
+            "cobertura_series": float(len(con_costo) / len(tabla)) if len(tabla) else 0.0,
+            "demanda_valorizada": demanda,
+            "error_valorizado": error,
+            "wmape_val": wmape,
+            "bias_val": bias,
+            "rmse_val": mse_val ** 0.5,
+            "D": wmape + abs(bias),
+        })
+
+    return pd.DataFrame(filas).sort_values("D").reset_index(drop=True)
+
+
+def tabla_valorizada(suite: pd.DataFrame) -> pd.DataFrame:
+    """La compañera valorizada de la Tabla 8, ordenada por la métrica de decisión."""
+    columnas = {
+        "modelo": "Modelo",
+        "wmape_val": "WMAPE valorizado (%)",
+        "bias_val": "Bias valorizado (%)",
+        "D": "D = WMAPE + |Bias| (%)",
+        "error_valorizado": "Error absoluto (Bs)",
+        "rmse_val": "RMSE valorizado (Bs)",
+        "series_con_costo": "Series con costo",
+    }
+    presentes = [c for c in columnas if c in suite.columns]
+    return suite[presentes].rename(columns=columnas)
+
+
 def matriz_de_errores(
     errores: dict[str, pd.DataFrame], metrica: str = "mae"
 ) -> pd.DataFrame:

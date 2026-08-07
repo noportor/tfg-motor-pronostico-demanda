@@ -42,11 +42,13 @@ def test_la_configuracion_real_cubre_gestiones_completas(cfg):
 # ---------------------------------------------------------------------------
 
 def test_anular_cambia_solo_la_clave_indicada(cfg):
-    anulado = aplicar_anulaciones(cfg.crudo, ["modelos.motor_regla=mae_mas_bias"])
+    # Se anula hacia el valor que NO es el default (el default es la regla
+    # compuesta, consistente con la métrica de decisión D).
+    anulado = aplicar_anulaciones(cfg.crudo, ["modelos.motor_regla=mae"])
 
-    assert anulado["modelos"]["motor_regla"] == "mae_mas_bias"
+    assert anulado["modelos"]["motor_regla"] == "mae"
     assert anulado["periodo"] == cfg.crudo["periodo"], "Se tocó otra sección"
-    assert cfg.crudo["modelos"]["motor_regla"] != "mae_mas_bias", (
+    assert cfg.crudo["modelos"]["motor_regla"] == "mae_mas_bias", (
         "La anulación mutó el diccionario original"
     )
 

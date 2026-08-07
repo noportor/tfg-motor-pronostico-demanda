@@ -159,7 +159,14 @@ modelos:
   # Regla de selección del motor. Se decide mirando SOLO validación (RN-2).
   #   mae             : argmin del MAE en validación
   #   mae_mas_bias    : argmin de MAE + |Bias| (regla nativa del motor en producción)
-  motor_regla: "mae"
+  #
+  # CONSISTENCIA DE LA INVESTIGACIÓN: la métrica de decisión del estudio es
+  # D = WMAPE_val + |Bias_val| (captura el objetivo del pronóstico: errar poco
+  # Y sin sesgo sistemático). El motor selecciona por su análogo por-serie
+  # (mae + |bias|), que ordena idéntico que la versión valorizada dentro de
+  # cada serie, y el contraste estadístico se parea sobre esa misma métrica.
+  # Es además la regla que el documento declara (§3.2.1) y la de producción.
+  motor_regla: "mae_mas_bias"
 
 # -----------------------------------------------------------------------------
 # 7. Features (RF-5)
@@ -181,7 +188,10 @@ pruebas:
   # tiene MENOS error que el de referencia.
   alternativa: "less"
   # Métrica sobre la que se hacen los contrastes pareados por serie.
-  metrica_contraste: "mae"
+  # `error_compuesto_unidades` = mae + |bias| por serie: el análogo por-serie
+  # de la métrica de decisión D (mismo orden que su versión valorizada dentro
+  # de cada serie). Consistencia: se contrasta con lo mismo que se decide.
+  metrica_contraste: "error_compuesto_unidades"
   # Shapiro-Wilk pierde sentido y satura por encima de este N; se submuestrea
   # con semilla fija y se declara en el informe.
   shapiro_n_maximo: 5000

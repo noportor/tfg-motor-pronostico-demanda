@@ -24,6 +24,7 @@ if str(RAIZ) not in sys.path:
 
 from src import carga, features, figuras, inspeccion, metricas, particion, pruebas, series
 from src.config import cargar_config
+from src.costos import cargar_costos
 from src.modelos import construir_modelos
 from src.modelos.base import (
     aplicar_respaldo, enmascarar_fuera_de_vida, mae_naive_entrenamiento, truncar_en_cero,
@@ -352,20 +353,61 @@ def comando_ejecutar(cfg) -> int:
     reporte.tabla("resumen_metricas.csv", resumen_completo)
     reporte.tabla("tabla8_resultados.csv", metricas.tabla8(resumen_completo))
     print(metricas.tabla8(resumen_completo).round(3).to_string(index=False))
+
+    # --- Suite valorizada: la agregación entre SKUs y la métrica de decisión D.
+    # Sin maestro de costos el experimento sigue (las métricas por serie y el
+    # contraste pareado no lo necesitan), pero se declara la omisión.
+    maestro = cargar_costos(cfg)
+    artefactos_metricas = ["errores_por_serie.csv", "resumen_metricas.csv",
+                           "tabla8_resultados.csv"]
+    notas_metricas = []
+    conteos_metricas: dict = {
+        "series_sin_mape": {
+            fila["modelo"]: int(fila["series_sin_mape"])
+            for _, fila in resumen_completo.iterrows()
+        },
+    }
+    suite_val = None
+    if maestro.disponible:
+        suite_val = metricas.suite_valorizada(
+            errores, maestro.costo_por_serie, orden=orden
+        )
+        reporte.tabla("tabla_valorizada.csv", metricas.tabla_valorizada(suite_val))
+        reporte.nota("valorizado", suite_val)
+        artefactos_metricas.append("tabla_valorizada.csv")
+        conteos_metricas["cobertura_de_costo"] = round(
+            float(suite_val["cobertura_series"].iloc[0]), 4
+        )
+        conteos_metricas["D_por_modelo_pct"] = {
+            fila["modelo"]: round(float(fila["D"]), 1)
+            for _, fila in suite_val.iterrows()
+        }
+        print("\n      MÉTRICA DE DECISIÓN  D = WMAPE_val + |Bias_val|  (menor es mejor):")
+        print(metricas.tabla_valorizada(suite_val).round(1).to_string(index=False))
+        notas_metricas.append(
+            "Las unidades difieren entre SKUs: la única agregación con sentido "
+            "físico entre productos es la valorizada (|error| × costo unitario). "
+            "Los promedios en 'unidades' de la Tabla 8 son referenciales."
+        )
+    else:
+        notas_metricas.append(
+            "SIN maestro de costos (datos/crudo/costos.csv): la suite valorizada "
+            "y la métrica de decisión D no se calcularon en esta corrida."
+        )
+
     reporte.etapa(
-        "metricas", "Métricas por serie sobre el bloque de prueba", rf="RF-7",
+        "metricas", "Métricas por serie y suite valorizada", rf="RF-7",
         entrada={"modelos": len(orden)},
         salida={"series_evaluadas": int(resumen_completo["series"].iloc[0])},
-        decisiones={"metricas": ["MAE", "RMSE", "MAPE", "Bias", "MASE"],
-                    "resumen": "media y mediana, sobre la intersección de series"},
-        conteos={
-            "series_sin_mape": {
-                fila["modelo"]: int(fila["series_sin_mape"])
-                for _, fila in resumen_completo.iterrows()
-            },
+        decisiones={
+            "metricas_por_serie": ["MAE", "RMSE", "MAPE", "Bias", "MASE",
+                                    "error compuesto (mae+|bias|)"],
+            "metrica_de_decision": "D = WMAPE_val + |Bias_val| (valorizada por costo)",
+            "resumen": "media y mediana, sobre la intersección de series",
         },
-        artefactos=["errores_por_serie.csv", "resumen_metricas.csv",
-                    "tabla8_resultados.csv"],
+        conteos=conteos_metricas,
+        artefactos=artefactos_metricas,
+        notas=notas_metricas,
         duracion_s=time.perf_counter() - inicio,
     )
     _fin(inicio)

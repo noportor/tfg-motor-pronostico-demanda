@@ -26,6 +26,7 @@ import { Cargando, ErrorCarga } from "../componentes/Estado";
 import { useCorridaActiva } from "../corrida";
 import {
   benchmarksDe,
+  useCsvGenerico,
   useErroresPorSerie,
   useManifiesto,
   useResumenMetricas,
@@ -55,6 +56,7 @@ export default function Resultados() {
   const corrida = useCorridaActiva();
   const resumen = useResumenMetricas(corrida);
   const tabla8 = useTabla8(corrida);
+  const valorizada = useCsvGenerico(corrida, "tabla_valorizada.csv");
   const manifiesto = useManifiesto(corrida);
   const errores = useErroresPorSerie(corrida);
 
@@ -187,10 +189,32 @@ export default function Resultados() {
         </Typography>
       )}
 
+      {/* --- Métrica de decisión (valorizada) -------------------------------- */}
+      {valorizada.data && valorizada.data.length > 0 && (
+        <Box sx={{ my: 3 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Métrica de decisión — D = WMAPE valorizado + |Bias valorizado|
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+            Las unidades difieren entre SKUs: la única agregación con sentido
+            físico entre productos es la valorizada (|error| × costo unitario).
+            D captura el objetivo del pronóstico — errar poco y sin sesgo
+            sistemático — y es la regla con la que el motor selecciona. Menor
+            es mejor.
+          </Typography>
+          <TablaDatos
+            filas={valorizada.data}
+            alto={64 + 40 * Math.min(valorizada.data.length, 11)}
+            decimales={1}
+          />
+        </Box>
+      )}
+
       {/* --- Tabla 8 -------------------------------------------------------- */}
       <Box sx={{ my: 3 }}>
         <Typography variant="subtitle2" gutterBottom>
-          Tabla 8 — como va al documento
+          Tabla 8 — como va al documento (niveles en unidades: referenciales;
+          comparar con MASE/MAPE o con la tabla valorizada)
         </Typography>
         {tabla8.data && <TablaDatos filas={tabla8.data} alto={480} />}
       </Box>
