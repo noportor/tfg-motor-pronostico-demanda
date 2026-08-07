@@ -43,6 +43,30 @@ real de regional. No inspecciona el interior de los documentos ofimáticos de
 
 ---
 
+## Trabajar sobre este repositorio
+
+La identidad de los commits y el helper de credenciales están fijados **en la
+configuración local de este repositorio**, no en la global, para no interferir
+con otras cuentas de GitHub que se usen en la misma máquina:
+
+```bash
+git config --local user.name  noportor
+git config --local user.email noportor@soe.uagrm.edu.bo
+
+# Neutraliza los helpers heredados del gitconfig del sistema y usa el de gh.
+# La primera entrada vacía es la que borra la cadena previa: sin ella, el helper
+# del sistema se ejecuta primero, devuelve la credencial de otra cuenta y GitHub
+# contesta «Repository not found» —404 en vez de 403, porque el repo es privado—,
+# que parece un problema de URL y no lo es.
+git config --local --replace-all credential.helper ""
+git config --local --add         credential.helper "!gh auth git-credential"
+```
+
+`gh` usa la cuenta que tenga activa. Si se cambia con `gh auth switch`, los push
+a este repositorio empiezan a fallar hasta volver a `noportor`.
+
+---
+
 ## Reproducibilidad
 
 Los números del documento se regeneran con un solo comando dentro de un entorno
