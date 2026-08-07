@@ -13,12 +13,14 @@ import pandas as pd
 import pytest
 
 from conftest import panel_de, serie_estacional
+from src.config import ErrorDeConfiguracion, cargar_config
 from src.modelos.croston import Croston
 from src.modelos.naive import Naive
 from src.modelos.promedio_movil import PromedioMovil
 from src.modelos.suavizado import HoltWinters, SuavizadoExponencial
 from src.multihorizonte import (
-    agregado_valorizado, proyectar_constante, proyectar_recursivo,
+    agregado_valorizado, criterio_por_serie, proyectar_constante,
+    proyectar_recursivo,
 )
 
 
@@ -187,6 +189,112 @@ def test_agregado_valorizado_a_mano():
     assert resumen.loc[2, "bias_val"] == pytest.approx(-5.0)
     assert resumen.loc[2, "D"] == pytest.approx(20.0)
     assert int(resumen.loc[1, "n_origenes"]) == 1
+
+
+def test_criterio_por_serie_a_mano():
+    """mae + |bias| de una proyección contra la realidad, verificado a mano."""
+    meses = pd.period_range("2024-04", periods=3, freq="M")
+    real = pd.DataFrame({"S": [10.0, 20.0, 30.0]}, index=meses)
+    proyeccion = pd.DataFrame({"S": [12.0, 18.0, 33.0]}, index=meses)
+
+    # mae = (2+2+3)/3 = 7/3; medias: pred 21, real 20 → bias 1.
+    puro = criterio_por_serie(proyeccion, real, regla="mae")
+    compuesto = criterio_por_serie(proyeccion, real, regla="mae_mas_bias")
+    assert puro["S"] == pytest.approx(7 / 3)
+    assert compuesto["S"] == pytest.approx(7 / 3 + 1.0)
+
+
+def test_criterio_sin_meses_comparables_es_nan():
+    meses = pd.period_range("2024-04", periods=2, freq="M")
+    real = pd.DataFrame({"S": [np.nan, np.nan]}, index=meses)
+    proyeccion = pd.DataFrame({"S": [5.0, 5.0]}, index=meses)
+    criterio = criterio_por_serie(proyeccion, real, regla="mae_mas_bias")
+    assert np.isnan(criterio["S"]), (
+        "Sin realidad con la que comparar no hay criterio: NaN, y el motor "
+        "asigna su respaldo declarado"
+    )
+
+
+def test_seleccion_multihorizonte_castiga_al_plano(cfg):
+    """El caso que motiva la ablación: una serie estacional donde el modelo
+    plano gana a un paso pero pierde proyectando el año completo."""
+    from src.modelos.motor import Motor
+
+    valores = serie_estacional(48)
+    panel = _ancho({"A": valores})
+    origen = panel.index[35]                       # 36 meses de "entrenamiento"
+    historia = panel.loc[panel.index <= origen]
+    meses_validacion = panel.index[36:48]
+    real_validacion = panel.reindex(meses_validacion)
+
+    hw = HoltWinters(periodo_estacional=12, alfas=[0.3], betas=[0.1], gammas=[0.2])
+    hw.ajustar(historia, historia)
+    ses = SuavizadoExponencial(alfas=[0.3])
+    ses.ajustar(historia, historia)
+
+    criterios = {}
+    for modelo in (hw, ses):
+        proyeccion = proyectar_recursivo(modelo, historia, horizonte=12)
+        proyeccion = proyeccion.reindex(index=meses_validacion)
+        criterios[modelo.nombre] = criterio_por_serie(
+            proyeccion, real_validacion, regla="mae_mas_bias"
+        )
+    matriz = pd.DataFrame(criterios)
+
+    # Con estacionalidad fuerte, la proyección plana del SES tiene que perder
+    # contra la forma estacional de HW en el año completo.
+    assert matriz.loc[matriz.index[0], "holt_winters"] < matriz.loc[
+        matriz.index[0], "exp_smooth_opt"
+    ]
+
+    # Y el motor, alimentado con esa matriz, elige HW para la serie.
+    predicciones = {
+        "holt_winters": hw.predecir(panel),
+        "exp_smooth_opt": ses.predecir(panel),
+        # Los demás candidatos declarados no participan de esta prueba: la
+        # matriz externa solo trae dos columnas y el motor debe rechazarla si
+        # le falta un candidato — por eso acá se recorta la lista.
+    }
+    cfg_dos = cargar_config(
+        cfg.ruta_config,
+        anulaciones=["modelos.activos=[holt_winters, exp_smooth_opt, motor]",
+                     "modelos.benchmark_promedio_movil=holt_winters",
+                     "modelos.benchmark_naive=exp_smooth_opt"],
+    )
+    motor = Motor(cfg_dos, predicciones, panel)
+    validacion = panel.reindex(meses_validacion)
+    motor.ajustar(historia, validacion, criterio_externo=matriz)
+    assert motor.informe.seleccion["modelo_elegido"].iloc[0] == "holt_winters"
+    assert "multihorizonte" in motor.informe.regla
+
+
+def test_motor_rechaza_criterio_incompleto(cfg):
+    from src.modelos.motor import Motor
+
+    panel = _ancho({"A": [10.0] * 48})
+    # El criterio externo trae naive_m1 pero NO ma_2, que sí es candidato con
+    # predicciones: el motor debe rechazar la matriz incompleta, no elegir
+    # entre los que casualmente estén.
+    matriz = pd.DataFrame({"naive_m1": [1.0]}, index=pd.Index(
+        [panel.columns[0]], name="serie"
+    ))
+    predicciones = {"naive_m1": panel.shift(1), "ma_2": panel.shift(1)}
+    motor = Motor(cfg, predicciones, panel)
+    with pytest.raises(ValueError):
+        motor.ajustar(
+            panel.iloc[:36], panel.iloc[36:48], criterio_externo=matriz
+        )
+
+
+def test_config_valida_motor_seleccion(cfg):
+    with pytest.raises(ErrorDeConfiguracion):
+        cargar_config(
+            cfg.ruta_config, anulaciones=["modelos.motor_seleccion=magia"]
+        )
+    valida = cargar_config(
+        cfg.ruta_config, anulaciones=["modelos.motor_seleccion=multihorizonte"]
+    )
+    assert valida.modelos["motor_seleccion"] == "multihorizonte"
 
 
 def test_grupo_sin_demanda_queda_visible_no_descartado():
