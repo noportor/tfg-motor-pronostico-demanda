@@ -128,9 +128,9 @@ def test_suavizado_exponencial_elige_alfa_por_serie():
 
     # En una serie perfectamente constante ambos alfas aciertan igual: gana el
     # primero de la rejilla por el desempate declarado.
-    assert modelo.alfa_por_serie["CONST|X|SANTA CRUZ"] == pytest.approx(0.05)
+    assert modelo.alfa_por_serie["CONST|CANAL-1|REGIONAL-A"] == pytest.approx(0.05)
     # Ante un escalón conviene reaccionar rápido.
-    assert modelo.alfa_por_serie["SALTO|X|SANTA CRUZ"] == pytest.approx(0.95)
+    assert modelo.alfa_por_serie["SALTO|CANAL-1|REGIONAL-A"] == pytest.approx(0.95)
 
 
 # ---------------------------------------------------------------------------

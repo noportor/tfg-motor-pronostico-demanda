@@ -33,8 +33,8 @@ def cfg():
 def panel_de(
     valores_por_serie: dict[str, list[float]],
     inicio: str = "2017-04",
-    canal: str = "X",
-    regional: str = "SANTA CRUZ",
+    canal: str = "CANAL-1",
+    regional: str = "REGIONAL-A",
 ) -> pd.DataFrame:
     """Construye un panel largo a partir de listas de valores mensuales.
 
