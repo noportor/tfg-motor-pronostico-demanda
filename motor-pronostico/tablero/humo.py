@@ -32,15 +32,24 @@ def main() -> int:
     fallas = 0
 
     # --- app.py (descubrimiento + navegación) -------------------------------
-    aplicacion = AppTest.from_file(str(PROYECTO / "tablero" / "app.py"))
-    aplicacion.run(timeout=60)
-    if aplicacion.exception:
-        fallas += 1
-        print("FALLA  app.py")
-        for excepcion in aplicacion.exception:
-            print("      ", excepcion.value)
-    else:
-        print("OK     app.py")
+    # Se ejecuta DOS veces: con ruta absoluta y con la ruta relativa con la que
+    # el servidor real lo lanza (`streamlit run tablero/app.py`). No es
+    # redundancia: con ruta relativa __file__ queda relativo al CWD y la
+    # resolución de páginas cambia — así se escapó un bug que el humo absoluto
+    # no veía.
+    for etiqueta, ruta_app in (
+        ("app.py (absoluta)", str(PROYECTO / "tablero" / "app.py")),
+        ("app.py (relativa, como el servidor)", "tablero/app.py"),
+    ):
+        aplicacion = AppTest.from_file(ruta_app)
+        aplicacion.run(timeout=60)
+        if aplicacion.exception:
+            fallas += 1
+            print(f"FALLA  {etiqueta}")
+            for excepcion in aplicacion.exception:
+                print("      ", excepcion.value)
+        else:
+            print(f"OK     {etiqueta}")
 
     # --- cada página, con la corrida principal en el estado -----------------
     paginas = sorted((PROYECTO / "tablero" / "paginas").glob("[0-9]*_*.py"))
@@ -56,7 +65,8 @@ def main() -> int:
         else:
             print(f"OK     {pagina.name}")
 
-    print(f"\n{len(paginas) + 1 - fallas} de {len(paginas) + 1} sin excepciones.")
+    total = len(paginas) + 2  # las páginas + las dos ejecuciones de app.py
+    print(f"\n{total - fallas} de {total} sin excepciones.")
     return 1 if fallas else 0
 
 
