@@ -10,3 +10,6 @@ __pycache__/
 .venv/
 venv/
 .env
+salidas_*/
+visor/node_modules/
+visor/dist/

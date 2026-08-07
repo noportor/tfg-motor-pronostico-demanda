@@ -85,6 +85,15 @@ ROLES = ("anio", "mes", "sku", "canal", "regional", "cantidad")
 # un tercero, pero un nombre de tabla se interpola en la consulta y no se puede
 # parametrizar como un valor: validarlo cuesta una línea y cierra la puerta.
 PATRON_IDENTIFICADOR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+# Columnas de fuentes auxiliares: pueden traer espacios (se citan SIEMPRE entre
+# comillas dobles en el SQL generado), pero nunca comillas ni caracteres de
+# control — eso sería inyección, venga de donde venga.
+PATRON_COLUMNA_CITADA = re.compile(r"^[A-Za-z_][A-Za-z0-9_ ]*$")
+
+
+def _citar(columna: str) -> str:
+    """Cita una columna auxiliar para el SQL generado."""
+    return '"' + columna + '"'
 
 
 class ErrorDeExtraccion(Exception):
@@ -145,11 +154,52 @@ def cargar_origen(ruta: Path = RUTA_ORIGEN) -> dict:
             f"origen.columna_categoria = '{categoria}' no es un identificador válido."
         )
 
+    # Columnas opcionales de la MISMA tabla: precio mensual y venta perdida.
+    # Habilitan las features exógenas del brazo de aprendizaje automático.
+    extras = {}
+    for clave in ("columna_precio", "columna_perdidas"):
+        valor = origen.get(clave)
+        if valor is not None and not PATRON_IDENTIFICADOR.match(str(valor)):
+            raise ErrorDeExtraccion(
+                f"origen.{clave} = '{valor}' no es un identificador válido."
+            )
+        extras[clave] = str(valor) if valor else None
+
+    # Fuentes auxiliares opcionales: inventario semanal (quiebres de stock) y
+    # tipo de cambio mensual. Cada una es una consulta más de la extracción y
+    # produce su propio archivo junto al snapshot.
+    def _fuente(nombre: str, roles: tuple[str, ...]) -> dict | None:
+        seccion = origen.get(nombre)
+        if not seccion:
+            return None
+        tabla_f = str(seccion.get("tabla", "")).strip()
+        if not PATRON_IDENTIFICADOR.match(tabla_f):
+            raise ErrorDeExtraccion(
+                f"{nombre}.tabla = '{tabla_f}' no es un identificador válido."
+            )
+        columnas_f = seccion.get("columnas") or {}
+        faltan = [rol for rol in roles if rol not in columnas_f]
+        if faltan:
+            raise ErrorDeExtraccion(
+                f"Faltan columnas en {nombre}.columnas: {faltan}."
+            )
+        for rol, col in columnas_f.items():
+            if not PATRON_COLUMNA_CITADA.match(str(col)):
+                raise ErrorDeExtraccion(
+                    f"{nombre}.columnas.{rol} = '{col}' no es una columna válida."
+                )
+        return {"tabla": tabla_f,
+                "columnas": {rol: str(columnas_f[rol]) for rol in roles}}
+
     return {
         "tabla": tabla,
         "columnas": {rol: str(columnas[rol]) for rol in ROLES},
         "columna_costo": str(costo) if costo else None,
         "columna_categoria": str(categoria) if categoria else None,
+        "columna_precio": extras["columna_precio"],
+        "columna_perdidas": extras["columna_perdidas"],
+        "inventario": _fuente("inventario", ("sku", "regional", "fecha", "cantidad")),
+        "tipo_cambio": _fuente("tipo_cambio", ("fecha", "tc")),
         "columna_de_control": str(control) if control else None,
         "anio_de_corte_del_control": int(origen.get("anio_de_corte_del_control", 2020)),
     }
@@ -176,6 +226,12 @@ def construir_consultas(origen: dict) -> tuple[str, str]:
     columna_categoria = (
         f"t.{origen['columna_categoria']}" if origen["columna_categoria"] else "NULL"
     )
+    columna_precio = (
+        f"t.{origen['columna_precio']}" if origen["columna_precio"] else "NULL"
+    )
+    columna_perdidas = (
+        f"t.{origen['columna_perdidas']}" if origen["columna_perdidas"] else "NULL"
+    )
 
     consulta = f"""
 SELECT
@@ -185,7 +241,9 @@ SELECT
     t.{c['regional']}                     AS regional,
     t.{c['cantidad']}                     AS cantidad,
     {columna_costo}                       AS costo,
-    {columna_categoria}                   AS categoria
+    {columna_categoria}                   AS categoria,
+    {columna_precio}                      AS precio,
+    {columna_perdidas}                    AS perdidas
 FROM {tabla} AS t
 WHERE (t.{c['anio']} * 100 + t.{c['mes']}) BETWEEN %(desde)s AND %(hasta)s
   AND t.{c['cantidad']} IS NOT NULL
@@ -332,7 +390,14 @@ def main() -> int:
         periodo_max: int | None = None
 
         con_categoria = origen["columna_categoria"] is not None
+        con_precio = origen["columna_precio"] is not None
+        con_perdidas = origen["columna_perdidas"] is not None
         categorias_vistas: set[str] = set()
+
+        def _numero(valor) -> str:
+            if valor is None:
+                return ""
+            return f"{float(valor):.6f}".rstrip("0").rstrip(".")
 
         with conexion.cursor(name="tfg_snapshot") as cur:
             cur.itersize = 50_000
@@ -344,9 +409,14 @@ def main() -> int:
                 encabezado = ["fecha", "sku", "canal", "regional", "cantidad"]
                 if con_categoria:
                     encabezado.append("categoria")
+                if con_precio:
+                    encabezado.append("precio")
+                if con_perdidas:
+                    encabezado.append("perdidas")
                 escritor.writerow(encabezado)
 
-                for periodo, sku, canal, regional, cantidad, costo, categoria in cur:
+                for (periodo, sku, canal, regional, cantidad, costo, categoria,
+                     precio, perdidas) in cur:
                     if not args.sin_seudonimizar:
                         if sku not in seudonimos:
                             seudonimos[sku] = f"SKU-{len(seudonimos) + 1:04d}"
@@ -361,12 +431,16 @@ def main() -> int:
                         regional,
                         # repr corto y estable: evita notación científica y
                         # diferencias de redondeo entre corridas.
-                        f"{float(cantidad):.6f}".rstrip("0").rstrip("."),
+                        _numero(cantidad),
                     ]
                     if con_categoria:
                         fila.append(categoria)
                         if categoria is not None:
                             categorias_vistas.add(str(categoria))
+                    if con_precio:
+                        fila.append(_numero(precio))
+                    if con_perdidas:
+                        fila.append(_numero(perdidas))
                     escritor.writerow(fila)
                     # Costo: constante por serie en la fuente; se toma el primer
                     # valor no nulo y positivo.
@@ -404,6 +478,90 @@ def main() -> int:
                 ])
         print(f"Costos unitarios -> {ruta_costos} ({len(costos):,} series con costo)")
 
+    # --- Fuentes auxiliares: quiebres de stock y tipo de cambio --------------
+    # Se extraen DESPUÉS del bucle principal porque reutilizan el mapa de
+    # seudónimos (mismo SKU real -> mismo seudónimo en todos los archivos).
+    ruta_quiebres = None
+    filas_quiebres = 0
+    if origen["inventario"]:
+        inv = origen["inventario"]
+        ci = {rol: _citar(col) for rol, col in inv["columnas"].items()}
+        consulta_inv = f"""
+SELECT
+    t.{ci['sku']}                                              AS sku,
+    t.{ci['regional']}                                         AS regional,
+    (EXTRACT(YEAR FROM t.{ci['fecha']}) * 100
+     + EXTRACT(MONTH FROM t.{ci['fecha']}))::int               AS periodo,
+    COUNT(*)                                                   AS semanas_medidas,
+    COUNT(*) FILTER (WHERE t.{ci['cantidad']} <= 0)            AS semanas_en_cero
+FROM {inv['tabla']} AS t
+WHERE (EXTRACT(YEAR FROM t.{ci['fecha']}) * 100
+       + EXTRACT(MONTH FROM t.{ci['fecha']})) BETWEEN %(desde)s AND %(hasta)s
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3
+"""
+        conexion = _conexion()
+        try:
+            with conexion.cursor(name="tfg_quiebres") as cur:
+                cur.itersize = 50_000
+                cur.execute(consulta_inv, {"desde": desde, "hasta": hasta})
+                ruta_quiebres = destino.parent / "quiebres.csv"
+                with ruta_quiebres.open("w", encoding="utf-8", newline="") as fh:
+                    escritor = csv.writer(fh, lineterminator="\n")
+                    escritor.writerow(["fecha", "sku", "regional",
+                                       "semanas_medidas", "semanas_en_cero"])
+                    for sku, regional, periodo, medidas, en_cero in cur:
+                        if not args.sin_seudonimizar:
+                            # Solo SKUs que existen en las ventas: el inventario
+                            # cubre TODO el catálogo y el resto no tiene serie.
+                            if sku not in seudonimos:
+                                continue
+                            sku_salida = seudonimos[sku]
+                        else:
+                            sku_salida = sku
+                        escritor.writerow([
+                            _fecha_iso(int(periodo)), sku_salida, regional,
+                            int(medidas), int(en_cero),
+                        ])
+                        filas_quiebres += 1
+        finally:
+            conexion.close()
+        print(f"Quiebres de stock -> {ruta_quiebres} ({filas_quiebres:,} filas "
+              f"sku-regional-mes; la fuente empieza en 2022 — antes es NaN "
+              f"declarado)")
+
+    ruta_tc = None
+    filas_tc = 0
+    if origen["tipo_cambio"]:
+        tcf = origen["tipo_cambio"]
+        ct = {rol: _citar(col) for rol, col in tcf["columnas"].items()}
+        consulta_tc = f"""
+SELECT
+    (EXTRACT(YEAR FROM t.{ct['fecha']}) * 100
+     + EXTRACT(MONTH FROM t.{ct['fecha']}))::int AS periodo,
+    t.{ct['tc']}                                 AS tc
+FROM {tcf['tabla']} AS t
+WHERE (EXTRACT(YEAR FROM t.{ct['fecha']}) * 100
+       + EXTRACT(MONTH FROM t.{ct['fecha']})) BETWEEN %(desde)s AND %(hasta)s
+ORDER BY 1
+"""
+        conexion = _conexion()
+        try:
+            with conexion.cursor() as cur:
+                cur.execute(consulta_tc, {"desde": desde, "hasta": hasta})
+                ruta_tc = destino.parent / "tipo_cambio.csv"
+                with ruta_tc.open("w", encoding="utf-8", newline="") as fh:
+                    escritor = csv.writer(fh, lineterminator="\n")
+                    escritor.writerow(["fecha", "tc"])
+                    for periodo, tc in cur:
+                        escritor.writerow([_fecha_iso(int(periodo)), _numero(tc)])
+                        filas_tc += 1
+        finally:
+            conexion.close()
+        print(f"Tipo de cambio -> {ruta_tc} ({filas_tc:,} meses; los meses "
+              f"anteriores al primero corresponden al régimen fijo declarado "
+              f"en config.yaml)")
+
     # Tabla de correspondencia: se guarda aparte y nunca se versiona.
     if seudonimos:
         ruta_mapeo = destino.parent / "mapeo_sku.csv"
@@ -435,6 +593,12 @@ def main() -> int:
         "skus_distintos": len(seudonimos) if seudonimos else None,
         "series_con_costo": len(costos) if origen["columna_costo"] else None,
         "sha256_costos": _sha256(ruta_costos) if ruta_costos else None,
+        "con_precio": con_precio,
+        "con_perdidas": con_perdidas,
+        "filas_quiebres": filas_quiebres if ruta_quiebres else None,
+        "sha256_quiebres": _sha256(ruta_quiebres) if ruta_quiebres else None,
+        "meses_tipo_cambio": filas_tc if ruta_tc else None,
+        "sha256_tipo_cambio": _sha256(ruta_tc) if ruta_tc else None,
         "seudonimizado": not args.sin_seudonimizar,
         "controles_origen": {
             k: (float(v) if isinstance(v, (int, float)) and v is not None else v)

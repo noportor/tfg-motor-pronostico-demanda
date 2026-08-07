@@ -25,6 +25,8 @@ datos:
     regional: "regional"
     cantidad: "cantidad"
     categoria: "categoria"
+    precio: "precio"
+    perdidas: "perdidas"
 
   # Separador y codificación del CSV (se ignoran si el archivo es .xlsx).
   separador: ","
@@ -189,17 +191,34 @@ modelos:
     alfa_rejilla: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
 
   # LightGBM — modelo global sobre todas las series.
-  # Objetivo regression_l1, coherente con que la métrica principal es el MAE.
+  #
+  # Hiperparámetros DECLARADOS desde la búsqueda determinista (Optuna TPE,
+  # semilla 20260408, 60 ensayos, fold interno = gestión 2024, criterio =
+  # D interna valorizada; tabla completa en salidas_tuning/, corrida
+  # 2026-08-07 sobre snapshot 5d1190ff con las features v2).
+  #
+  # La hipótesis pre-registrada del sesgo SE CONFIRMÓ en el fold interno:
+  # regression_l1 optimiza la mediana condicional y en demanda con cola
+  # derecha sub-pronostica estructuralmente (bias interno −13,6 %); el
+  # objetivo TWEEDIE (diseñado para demanda con ceros y cola derecha) lo
+  # elimina (bias interno +0,2 %) con el mismo error absoluto. D interna:
+  # l1 = 73,3 · l2 = 79,8 · tweedie = 59,7.
+  #
+  # El piso v1 se reproduce por ablación: --anular de objective/learning_rate/
+  # num_leaves/min_data_in_leaf/feature_fraction/bagging_fraction/lambda_l2 a
+  # los valores previos (objective=regression_l1, lr=0.05, leaves=63,
+  # min_data=40, ff=0.8, bf=0.8, l2=1.0) + features.v2.* en false.
   lightgbm:
-    objective: "regression_l1"
-    metric: "l1"
-    learning_rate: 0.05
-    num_leaves: 63
-    min_data_in_leaf: 40
-    feature_fraction: 0.8
-    bagging_fraction: 0.8
+    objective: "tweedie"
+    tweedie_variance_power: 1.464977652919245
+    metric: "tweedie"
+    learning_rate: 0.05310654167584386
+    num_leaves: 137
+    min_data_in_leaf: 61
+    feature_fraction: 0.5778124801487501
+    bagging_fraction: 0.870285300844084
     bagging_freq: 1
-    lambda_l2: 1.0
+    lambda_l2: 24.468189902436567
     num_boost_round: 3000
     early_stopping_rounds: 100
     # Reproducibilidad exacta (RN-5): un solo hilo y modo determinista.
@@ -247,6 +266,44 @@ features:
   incluir_tendencia: true
   categoricas: ["sku", "canal", "regional"]
 
+  # --- Features v2 (decisión 2026-08-07) -------------------------------------
+  # El brazo de aprendizaje automático deja de ser el piso declarado: gana la
+  # visibilidad que los clásicos no tienen. TODAS son causales (rezagadas: solo
+  # información anterior al mes predicho, RN-3) y cada grupo es anulable por
+  # ablación (--anular features.v2.X=false; el conjunto en false = el piso v1).
+  #
+  #   categoria   : la categoría comercial como categórica del modelo global —
+  #                 con una población de dos regímenes (recurrente/estacional),
+  #                 separa comportamientos que el SKU solo insinúa.
+  #   precio      : precio mensual rezagado + variación % (100 % de cobertura).
+  #   perdidas    : venta perdida rezagada + suma móvil 12 (demanda
+  #                 insatisfecha reciente; 0 antes de 2020 por definición de la
+  #                 fuente — declarado).
+  #   quiebres    : % de semanas con stock en cero, rezagado + móvil 3 (separa
+  #                 «mes bajo por oferta» de «mes bajo por demanda»). La fuente
+  #                 empieza en 2022-04: antes es NaN, y «no hay historia» es
+  #                 información, no un dato que falte.
+  #   tipo_cambio : TC mensual rezagado + variación % (régimen variable desde
+  #                 2022; antes, el fijo documentado de abajo).
+  #   derivadas   : recencia de venta, % ceros móvil, media histórica del mismo
+  #                 mes calendario, razón interanual, momentum, mín/máx móvil.
+  v2:
+    categoria: true
+    precio: true
+    perdidas: true
+    quiebres: true
+    tipo_cambio: true
+    derivadas: true
+
+  # Régimen cambiario fijo documentado (Bs/USD) para los meses anteriores al
+  # primer dato de la fuente de tipo de cambio (Bolivia mantuvo 6,96 hasta la
+  # transición al régimen variable).
+  tc_regimen_fijo: 6.96
+
+  # Fuentes exógenas auxiliares (viven junto al snapshot; nunca se versionan).
+  archivo_quiebres: "datos/crudo/quiebres.csv"
+  archivo_tipo_cambio: "datos/crudo/tipo_cambio.csv"
+
 # -----------------------------------------------------------------------------
 # 7b. Evaluación multihorizonte (RN-4, segunda parte)
 # -----------------------------------------------------------------------------
@@ -272,6 +329,44 @@ multihorizonte:
   horizonte_maximo: 12
   origenes: "rodantes"
   reentrenar_lightgbm: true
+
+# -----------------------------------------------------------------------------
+# 7c. Ajuste de hiperparámetros del brazo de aprendizaje automático
+# -----------------------------------------------------------------------------
+# Lo consume scripts/ajustar_lightgbm.py (NO el pipeline): la búsqueda corre
+# UNA vez, sus artefactos quedan en salidas_tuning/, y los hiperparámetros
+# ganadores se DECLARAN a mano en modelos.lightgbm con un comentario que cita
+# la corrida. Así el pipeline sigue siendo rápido y todo queda trazable.
+#
+# Reproducibilidad (RN-5): Optuna TPE con semilla fija y ejecución secuencial —
+# la secuencia de ensayos es determinista. El espacio se declara acá (el mismo
+# principio que la rejilla de alfa del SES, a otra escala) y la tabla completa
+# de ensayos es un artefacto: el tribunal ve el camino, no solo al ganador.
+#
+# FOLD INTERNO: entrena con gestiones 2018-2023 y evalúa la gestión 2024 (el
+# último año de ENTRENAMIENTO). La validación real queda intacta para el motor
+# (RN-2) y la prueba jamás se toca. Criterio: D interna valorizada.
+#
+# La hipótesis principal que la búsqueda arbitra: el objetivo de entrenamiento.
+# regression_l1 optimiza la MEDIANA condicional y en demanda con cola derecha
+# sub-pronostica estructuralmente (el Bias de -33 % del piso v1); tweedie está
+# diseñado para demanda con ceros y cola derecha.
+lightgbm_tuning:
+  semilla: 20260408
+  n_trials: 60
+  fold_desde: "2023-04"          # gestión 2024 como validación interna
+  fold_hasta: "2024-03"
+  num_boost_round: 3000
+  early_stopping_rounds: 100
+  espacio:
+    objective: ["regression_l1", "regression_l2", "tweedie"]
+    tweedie_variance_power: [1.1, 1.6]     # solo aplica si objective=tweedie
+    learning_rate: [0.02, 0.12]            # escala logarítmica
+    num_leaves: [15, 255]                  # escala logarítmica, entero
+    min_data_in_leaf: [10, 200]            # escala logarítmica, entero
+    feature_fraction: [0.5, 1.0]
+    bagging_fraction: [0.5, 1.0]
+    lambda_l2: [0.0, 30.0]
 
 # -----------------------------------------------------------------------------
 # 8. Pruebas estadísticas (RF-8)
