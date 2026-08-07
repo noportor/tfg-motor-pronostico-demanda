@@ -22,6 +22,9 @@ services:
       - ./tests:/app/tests
       - ./scripts:/app/scripts
       - ./main.py:/app/main.py
+      # Solo lectura: el manifiesto necesita el commit que generó los números
+      # (RN-6) y lo lee directamente de aquí, sin ejecutar git.
+      - ./.git:/app/.git:ro
     environment:
       # Credenciales de la extracción. Se leen del entorno del host; nunca se
       # escriben en este archivo ni en el repositorio.

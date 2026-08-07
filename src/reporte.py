@@ -47,8 +47,44 @@ def _sha256(ruta: Path) -> str:
     return h.hexdigest()
 
 
+def _commit_leyendo_el_repositorio(raiz: Path) -> str | None:
+    """Lee el commit directamente de ``.git/``, sin ejecutar git.
+
+    Hace falta porque el pipeline corre dentro de un contenedor mínimo que no
+    trae el binario de git. Instalarlo solo para esto agrandaría la imagen y
+    añadiría una dependencia al entorno reproducible; leer dos archivos de texto
+    no cuesta nada. Lo que NO se puede saber por esta vía es si el árbol de
+    trabajo tiene cambios sin commitear, y por eso se declara desconocido en vez
+    de darlo por limpio.
+    """
+    git = raiz / ".git"
+    if not git.exists():
+        return None
+    try:
+        cabeza = (git / "HEAD").read_text(encoding="utf-8").strip()
+        if not cabeza.startswith("ref:"):
+            return cabeza  # HEAD desprendido: ya es el sha
+        referencia = cabeza.split(" ", 1)[1].strip()
+
+        suelta = git / referencia
+        if suelta.exists():
+            return suelta.read_text(encoding="utf-8").strip()
+
+        empaquetadas = git / "packed-refs"
+        if empaquetadas.exists():
+            for linea in empaquetadas.read_text(encoding="utf-8").splitlines():
+                if linea.startswith("#") or " " not in linea:
+                    continue
+                sha, nombre = linea.split(" ", 1)
+                if nombre.strip() == referencia:
+                    return sha.strip()
+    except OSError:
+        return None
+    return None
+
+
 def _version_del_codigo(raiz: Path) -> dict:
-    """Commit que generó los números. Si no hay repositorio, se dice."""
+    """Commit que generó los números (RN-6). Si no se puede saber, se dice."""
     try:
         commit = subprocess.run(
             ["git", "-C", str(raiz), "rev-parse", "HEAD"],
@@ -62,15 +98,29 @@ def _version_del_codigo(raiz: Path) -> dict:
             "commit": commit,
             "arbol_limpio": not bool(sucio),
             "archivos_modificados": [l[3:] for l in sucio.splitlines()] if sucio else [],
+            "origen": "git",
         }
     except Exception:
+        commit = _commit_leyendo_el_repositorio(raiz)
+        if commit:
+            return {
+                "commit": commit,
+                "arbol_limpio": None,
+                "origen": "lectura directa de .git/ (sin el binario de git)",
+                "advertencia": (
+                    "El commit se leyó del repositorio, pero sin git no se puede "
+                    "comprobar si había cambios sin commitear al ejecutar. Verificalo "
+                    "con `git status` antes de citar estos números en el documento."
+                ),
+            }
         return {
             "commit": None,
             "arbol_limpio": None,
+            "origen": None,
             "advertencia": (
                 "No se pudo determinar el commit: el directorio no es un repositorio "
-                "git o git no está disponible. La RN-6 exige poder rastrear cada "
-                "número hasta el commit que lo generó."
+                "git. La RN-6 exige poder rastrear cada número hasta el commit que lo "
+                "generó."
             ),
         }
 
