@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import Config
-from ..features import nombres_de_features
+from ..features import categoricas_de, nombres_de_features
 
 
 class ModeloLightGBM:
@@ -50,7 +50,7 @@ class ModeloLightGBM:
         self.cfg = cfg
         self.tabla = tabla
         self.columnas = nombres_de_features(cfg)
-        self.categoricas = [c for c in cfg.features.categoricas if c in self.columnas]
+        self.categoricas = [c for c in categoricas_de(cfg) if c in self.columnas]
         self.booster = None
         self.mejor_iteracion: int | None = None
         self.importancias: pd.DataFrame | None = None

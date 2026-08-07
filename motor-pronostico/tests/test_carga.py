@@ -18,7 +18,7 @@ def _escribir(tmp_path, filas, nombre="ventas.csv"):
 def test_error_enumera_lo_que_falta_y_lo_que_hay(cfg, tmp_path):
     ruta = _escribir(tmp_path, [
         {"fecha": "2020-01-01", "codigo": "A", "canal": "CANAL-1",
-         "regional": "REGIONAL-A", "cantidad": 10, "categoria": "PLASTICOS"},
+         "regional": "REGIONAL-A", "cantidad": 10, "categoria": "PLASTICOS", "precio": "2.5", "perdidas": "0"},
     ])
 
     with pytest.raises(ErrorDeCarga) as excepcion:
@@ -33,9 +33,9 @@ def test_error_enumera_lo_que_falta_y_lo_que_hay(cfg, tmp_path):
 def test_lee_csv_y_convierte_tipos(cfg, tmp_path):
     ruta = _escribir(tmp_path, [
         {"fecha": "2020-01-01", "sku": "A", "canal": "CANAL-1",
-         "regional": "REGIONAL-A", "cantidad": "10.5", "categoria": "PLASTICOS"},
+         "regional": "REGIONAL-A", "cantidad": "10.5", "categoria": "PLASTICOS", "precio": "2.5", "perdidas": "0"},
         {"fecha": "2020-02-01", "sku": "A", "canal": "CANAL-1",
-         "regional": "REGIONAL-A", "cantidad": "20", "categoria": "PLASTICOS"},
+         "regional": "REGIONAL-A", "cantidad": "20", "categoria": "PLASTICOS", "precio": "2.5", "perdidas": "0"},
     ])
     df, informe = cargar(cfg, ruta)
 
@@ -49,11 +49,11 @@ def test_cuenta_los_valores_que_no_pudo_convertir(cfg, tmp_path):
     """RN-1: lo inconvertible se descarta y se CUENTA; nunca se rellena."""
     ruta = _escribir(tmp_path, [
         {"fecha": "2020-01-01", "sku": "A", "canal": "CANAL-1",
-         "regional": "REGIONAL-A", "cantidad": "10", "categoria": "PLASTICOS"},
+         "regional": "REGIONAL-A", "cantidad": "10", "categoria": "PLASTICOS", "precio": "2.5", "perdidas": "0"},
         {"fecha": "no-es-fecha", "sku": "A", "canal": "CANAL-1",
-         "regional": "REGIONAL-A", "cantidad": "20", "categoria": "PLASTICOS"},
+         "regional": "REGIONAL-A", "cantidad": "20", "categoria": "PLASTICOS", "precio": "2.5", "perdidas": "0"},
         {"fecha": "2020-03-01", "sku": "A", "canal": "CANAL-1",
-         "regional": "REGIONAL-A", "cantidad": "diez", "categoria": "PLASTICOS"},
+         "regional": "REGIONAL-A", "cantidad": "diez", "categoria": "PLASTICOS", "precio": "2.5", "perdidas": "0"},
     ])
     df, informe = cargar(cfg, ruta)
 

@@ -144,6 +144,187 @@ def test_medias_moviles_se_calculan_sobre_valores_desplazados(cfg):
     assert tabla["media_movil_3"].iloc[:3].isna().all()
 
 
+def _exogenas_de(panel, precios=None, perdidas=None, quiebres=None, tc=None,
+                 categorias=None):
+    """Paquete de exógenas sintético con la misma forma que src.exogenas."""
+    from types import SimpleNamespace
+
+    def _largo(valores, columna):
+        if valores is None:
+            return None
+        filas = []
+        for serie, lista in valores.items():
+            meses = pd.period_range("2017-04", periods=len(lista), freq="M")
+            for periodo, valor in zip(meses, lista):
+                filas.append({"serie": serie, "periodo": periodo, columna: valor})
+        return pd.DataFrame(filas)
+
+    return SimpleNamespace(
+        precio=_largo(precios, "precio"),
+        perdidas=_largo(perdidas, "perdidas"),
+        quiebres=quiebres,
+        tipo_cambio=tc,
+        categoria_por_serie=categorias,
+    )
+
+
+def test_precio_rezagado_a_mano(cfg):
+    if not cfg.features.v2.get("precio"):
+        pytest.skip("features.v2.precio apagada.")
+    panel = panel_de({"P1": [10.0] * 6})
+    serie = panel["serie"].iloc[0]
+    exogenas = _exogenas_de(panel, precios={serie: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]})
+
+    tabla = _features_con(panel, cfg, exogenas)
+    # Fila 3: precio_rezago_1 = precio del mes 2 (3.0); delta = (3-2)/2.
+    assert tabla["precio_rezago_1"].iloc[3] == pytest.approx(3.0)
+    assert tabla["precio_delta_pct"].iloc[3] == pytest.approx(0.5)
+    assert np.isnan(tabla["precio_rezago_1"].iloc[0])
+
+
+def test_exogenas_ausentes_son_nan_no_cero(cfg):
+    """Sin fuentes, las columnas exógenas existen y son NaN: «sin dato»
+    declarado — un cero inventado diría «no hubo quiebre/pérdida»."""
+    panel = panel_de({"P1": [10.0] * 6})
+    tabla = _features_con(panel, cfg, None)
+    for columna in ("precio_rezago_1", "perdidas_rezago_1",
+                    "quiebre_pct_rezago_1", "tc_rezago_1"):
+        if columna in tabla.columns:
+            assert tabla[columna].isna().all(), f"{columna} debía ser NaN"
+
+
+def test_alterar_exogenas_futuras_no_cambia_el_presente(cfg):
+    """La no-fuga también rige para las exógenas: cambiar el precio de un mes
+    futuro no puede mover ninguna feature de meses anteriores."""
+    if not cfg.features.v2.get("precio"):
+        pytest.skip("features.v2.precio apagada.")
+    valores = serie_estacional(24)
+    panel = panel_de({"P1": valores})
+    serie = panel["serie"].iloc[0]
+
+    precios_a = [2.0] * 24
+    precios_b = list(precios_a)
+    precios_b[20] = 999.0                      # solo el mes 20 cambia
+
+    tabla_a = _features_con(panel, cfg, _exogenas_de(panel, precios={serie: precios_a}))
+    tabla_b = _features_con(panel, cfg, _exogenas_de(panel, precios={serie: precios_b}))
+
+    columnas = [c for c in tabla_a.columns if c not in COLUMNAS_CONTEXTO and c != "y"]
+    pd.testing.assert_frame_equal(
+        tabla_a.loc[:19, columnas], tabla_b.loc[:19, columnas],
+        obj="Features de los meses 0..19 tras alterar el precio del mes 20",
+    )
+
+
+def test_perdidas_y_quiebres_rezagados_a_mano(cfg):
+    """Los dos grupos exógenos que el guardián de no-fuga no cubría por
+    defecto: valor rezagado verificado a mano (hallazgo de auditoría)."""
+    v2 = cfg.features.v2
+    if not (v2.get("perdidas") and v2.get("quiebres")):
+        pytest.skip("features.v2.perdidas/quiebres apagadas.")
+    panel = panel_de({"P1": [10.0] * 6})
+    serie = panel["serie"].iloc[0]
+    sku, _, regional = serie.split("|")
+
+    meses = pd.period_range("2017-04", periods=6, freq="M")
+    quiebres = pd.DataFrame({
+        "sku": pd.array([sku] * 6, dtype="string"),
+        "regional": pd.array([regional] * 6, dtype="string"),
+        "periodo": meses,
+        "semanas_medidas": [4] * 6,
+        "semanas_en_cero": [0, 2, 4, 0, 1, 3],
+    })
+    exogenas = _exogenas_de(
+        panel, perdidas={serie: [0.0, 5.0, 0.0, 7.0, 0.0, 0.0]},
+        quiebres=quiebres,
+    )
+    tabla = _features_con(panel, cfg, exogenas)
+
+    # Fila 2: perdidas_rezago_1 = pérdidas del mes 1 (5.0).
+    assert tabla["perdidas_rezago_1"].iloc[2] == pytest.approx(5.0)
+    # Fila 3: quiebre del mes 2 = 4/4 = 1.0.
+    assert tabla["quiebre_pct_rezago_1"].iloc[3] == pytest.approx(1.0)
+    # Fila 4: móvil 3 de quiebres de los meses 1..3 = (0.5 + 1.0 + 0.0)/3.
+    assert tabla["quiebre_pct_movil_3"].iloc[4] == pytest.approx(0.5)
+
+
+def test_alterar_perdidas_y_quiebres_futuros_no_cambia_el_presente(cfg):
+    """El barrido de no-fuga para los grupos exógenos restantes."""
+    v2 = cfg.features.v2
+    if not (v2.get("perdidas") and v2.get("quiebres")):
+        pytest.skip("features.v2.perdidas/quiebres apagadas.")
+    valores = serie_estacional(24)
+    panel = panel_de({"P1": valores})
+    serie = panel["serie"].iloc[0]
+    sku, _, regional = serie.split("|")
+    meses = pd.period_range("2017-04", periods=24, freq="M")
+
+    def armar(perdidas_20, quiebre_20):
+        perdidas = [1.0] * 24
+        perdidas[20] = perdidas_20
+        en_cero = [1] * 24
+        en_cero[20] = quiebre_20
+        quiebres = pd.DataFrame({
+            "sku": pd.array([sku] * 24, dtype="string"),
+            "regional": pd.array([regional] * 24, dtype="string"),
+            "periodo": meses,
+            "semanas_medidas": [4] * 24,
+            "semanas_en_cero": en_cero,
+        })
+        return _exogenas_de(panel, perdidas={serie: perdidas}, quiebres=quiebres)
+
+    tabla_a = _features_con(panel, cfg, armar(1.0, 1))
+    tabla_b = _features_con(panel, cfg, armar(999.0, 4))
+
+    columnas = [c for c in tabla_a.columns if c not in COLUMNAS_CONTEXTO and c != "y"]
+    pd.testing.assert_frame_equal(
+        tabla_a.loc[:19, columnas], tabla_b.loc[:19, columnas],
+        obj="Features de los meses 0..19 tras alterar pérdidas/quiebres del mes 20",
+    )
+
+
+def test_tipo_cambio_es_el_del_mes_anterior(cfg):
+    if not cfg.features.v2.get("tipo_cambio"):
+        pytest.skip("features.v2.tipo_cambio apagada.")
+    panel = panel_de({"P1": [10.0] * 6})
+    meses = pd.period_range("2017-04", periods=6, freq="M")
+    tc = pd.Series([6.0, 7.0, 8.0, 9.0, 10.0, 11.0], index=meses)
+
+    tabla = _features_con(panel, cfg, _exogenas_de(panel, tc=tc))
+    # Fila 2 (mes 2017-06): tc_rezago_1 = tc de 2017-05 = 7.0;
+    # delta = (7-6)/6.
+    assert tabla["tc_rezago_1"].iloc[2] == pytest.approx(7.0)
+    assert tabla["tc_delta_pct"].iloc[2] == pytest.approx(1 / 6)
+
+
+def test_recencia_y_media_del_mismo_mes_a_mano(cfg):
+    if not cfg.features.v2.get("derivadas"):
+        pytest.skip("features.v2.derivadas apagadas.")
+    # 26 meses: venta en los meses 0, 3 y luego nada.
+    valores = [5.0, 0.0, 0.0, 8.0] + [0.0] * 22
+    tabla = _features_con(panel_de({"P1": valores}), cfg, None)
+
+    # Mes 2: última venta ANTERIOR fue el mes 0 -> recencia 2.
+    assert tabla["meses_desde_venta"].iloc[2] == pytest.approx(2.0)
+    # Mes 4: última venta anterior fue el mes 3 -> recencia 1.
+    assert tabla["meses_desde_venta"].iloc[4] == pytest.approx(1.0)
+    # Mes 0: sin venta previa -> NaN.
+    assert np.isnan(tabla["meses_desde_venta"].iloc[0])
+
+    # media_mismo_mes: la fila 24 es el MISMO mes calendario que la fila 12 y
+    # la 0 -> media de y[0] y y[12] = (5 + 0) / 2.
+    assert tabla["media_mismo_mes"].iloc[24] == pytest.approx(2.5)
+    # La fila 12 solo tiene un año previo: y[0] = 5.
+    assert tabla["media_mismo_mes"].iloc[12] == pytest.approx(5.0)
+
+
+def _features_con(panel, cfg, exogenas):
+    return (
+        construir_features(panel, cfg, exogenas)
+        .sort_values(["serie", "periodo"]).reset_index(drop=True)
+    )
+
+
 def test_la_tendencia_no_depende_de_valores_futuros(cfg):
     """La tendencia es la antigüedad de la serie, no un ajuste sobre los datos."""
     if not cfg.features.incluir_tendencia:

@@ -32,7 +32,9 @@ def nombres_de_features(cfg: Config) -> list[str]:
 
     El orden es fijo y no depende de la iteración de ningún diccionario: sin
     esto, LightGBM podría recibir las columnas en orden distinto entre corridas
-    y la RN-5 dejaría de cumplirse.
+    y la RN-5 dejaría de cumplirse. Los grupos v2 entran al final, cada uno con
+    su orden interno fijo; con su flag apagado (o su fuente ausente) las
+    columnas no existen (o son NaN), y el contrato no cambia de forma.
     """
     nombres: list[str] = []
     nombres += [f"rezago_{k}" for k in cfg.features.rezagos]
@@ -45,15 +47,45 @@ def nombres_de_features(cfg: Config) -> list[str]:
     if cfg.features.incluir_tendencia:
         nombres += ["tendencia"]
     nombres += list(cfg.features.categoricas)
+
+    v2 = cfg.features.v2
+    if v2.get("derivadas"):
+        nombres += ["meses_desde_venta", "prop_ceros_movil_12",
+                    "media_mismo_mes", "razon_interanual", "momentum_3_12",
+                    "min_movil_12", "max_movil_12"]
+    if v2.get("precio"):
+        nombres += ["precio_rezago_1", "precio_delta_pct"]
+    if v2.get("perdidas"):
+        nombres += ["perdidas_rezago_1", "perdidas_movil_12"]
+    if v2.get("quiebres"):
+        nombres += ["quiebre_pct_rezago_1", "quiebre_pct_movil_3"]
+    if v2.get("tipo_cambio"):
+        nombres += ["tc_rezago_1", "tc_delta_pct"]
+    if v2.get("categoria"):
+        nombres += ["categoria"]
     return nombres
 
 
-def construir_features(panel: pd.DataFrame, cfg: Config) -> pd.DataFrame:
+def categoricas_de(cfg: Config) -> list[str]:
+    """Las columnas categóricas que consume LightGBM, v2 incluida."""
+    categoricas = list(cfg.features.categoricas)
+    if cfg.features.v2.get("categoria"):
+        categoricas.append("categoria")
+    return categoricas
+
+
+def construir_features(
+    panel: pd.DataFrame, cfg: Config, exogenas=None
+) -> pd.DataFrame:
     """Panel largo -> tabla de entrenamiento con features y objetivo.
 
     Args:
         panel: columnas ``serie``, ``sku``, ``canal``, ``regional``,
             ``periodo`` (``pd.Period`` mensual) e ``y``.
+        exogenas: el paquete de :func:`src.exogenas.cargar_exogenas`. Con
+            ``None`` (o con una fuente ausente), las features exógenas salen
+            como columnas NaN: «sin dato» declarado, jamás un cero inventado —
+            y el contrato de columnas no cambia de forma.
 
     Returns:
         Una fila por (serie, mes) con las columnas de contexto, el objetivo
@@ -100,6 +132,127 @@ def construir_features(panel: pd.DataFrame, cfg: Config) -> pd.DataFrame:
         # Antigüedad de la serie en meses, empezando en 0. Depende solo del mes
         # de nacimiento, nunca de los valores observados.
         tabla["tendencia"] = tabla.groupby("serie", observed=True, sort=False).cumcount()
+
+    # --- Features v2: derivadas causales del propio panel -------------------
+    # Cada una usa EXCLUSIVAMENTE información anterior al mes de su fila (los
+    # shift van antes que cualquier ventana); la prueba de no-fuga las barre
+    # junto con todas las demás.
+    v2 = cfg.features.v2
+    por_serie = tabla.groupby("serie", observed=True, sort=False)
+
+    if v2.get("derivadas"):
+        # Recencia: meses transcurridos desde la última venta positiva ANTERIOR
+        # al mes de la fila (NaN antes de la primera venta).
+        indice = por_serie.cumcount()
+        marcador = indice.where(tabla["y"] > 0)
+        ultimo_previo = marcador.groupby(
+            tabla["serie"], observed=True
+        ).transform(lambda s: s.shift(1).ffill())
+        tabla["meses_desde_venta"] = indice - ultimo_previo
+
+        ceros = (tabla["y"] <= 0).astype(float)
+        tabla["prop_ceros_movil_12"] = ceros.groupby(
+            tabla["serie"], observed=True
+        ).transform(lambda s: s.shift(1).rolling(12, min_periods=12).mean())
+
+        # Media histórica del MISMO mes calendario (expandiente, sin el año en
+        # curso): la forma estacional propia de la serie, sin mirar el presente.
+        mes_calendario = pd.PeriodIndex(tabla["periodo"]).month
+        tabla["media_mismo_mes"] = tabla.groupby(
+            [tabla["serie"], mes_calendario], observed=True
+        )["y"].transform(lambda s: s.shift(1).expanding().mean())
+
+        rezago_1 = agrupado.shift(1)
+        rezago_13 = agrupado.shift(13)
+        tabla["razon_interanual"] = (rezago_1 + 1.0) / (rezago_13 + 1.0)
+
+        mm3 = por_serie_desplazada.transform(
+            lambda s: s.rolling(3, min_periods=3).mean()
+        )
+        mm12 = por_serie_desplazada.transform(
+            lambda s: s.rolling(12, min_periods=12).mean()
+        )
+        tabla["momentum_3_12"] = np.where(mm12 > 0, mm3 / mm12, np.nan)
+        tabla["min_movil_12"] = por_serie_desplazada.transform(
+            lambda s: s.rolling(12, min_periods=12).min()
+        )
+        tabla["max_movil_12"] = por_serie_desplazada.transform(
+            lambda s: s.rolling(12, min_periods=12).max()
+        )
+
+    # --- Features v2: exógenas (rezagadas SIEMPRE) --------------------------
+    def _alinear(frame, claves, columna) -> pd.Series:
+        """Trae la columna exógena alineada a la tabla (NaN donde no hay)."""
+        if frame is None:
+            return pd.Series(np.nan, index=tabla.index)
+        union = tabla[claves].merge(
+            frame[[*claves, columna]], on=claves, how="left"
+        )
+        return union[columna].set_axis(tabla.index)
+
+    def _rezagar(valores: pd.Series, meses: int = 1) -> pd.Series:
+        return valores.groupby(tabla["serie"], observed=True).shift(meses)
+
+    if v2.get("precio"):
+        precio = _alinear(getattr(exogenas, "precio", None),
+                          ["serie", "periodo"], "precio")
+        p1, p2 = _rezagar(precio, 1), _rezagar(precio, 2)
+        tabla["precio_rezago_1"] = p1
+        tabla["precio_delta_pct"] = np.where(p2 > 0, (p1 - p2) / p2, np.nan)
+
+    if v2.get("perdidas"):
+        perdidas = _alinear(getattr(exogenas, "perdidas", None),
+                            ["serie", "periodo"], "perdidas")
+        tabla["perdidas_rezago_1"] = _rezagar(perdidas, 1)
+        tabla["perdidas_movil_12"] = perdidas.groupby(
+            tabla["serie"], observed=True
+        ).transform(lambda s: s.shift(1).rolling(12, min_periods=12).sum())
+
+    if v2.get("quiebres"):
+        quiebres = getattr(exogenas, "quiebres", None)
+        if quiebres is not None:
+            quiebres = quiebres.assign(
+                quiebre_pct=lambda q: np.where(
+                    q["semanas_medidas"] > 0,
+                    q["semanas_en_cero"] / q["semanas_medidas"], np.nan,
+                )
+            )
+        pct = _alinear(quiebres, ["sku", "regional", "periodo"], "quiebre_pct")
+        tabla["quiebre_pct_rezago_1"] = _rezagar(pct, 1)
+        tabla["quiebre_pct_movil_3"] = pct.groupby(
+            tabla["serie"], observed=True
+        ).transform(lambda s: s.shift(1).rolling(3, min_periods=3).mean())
+
+    if v2.get("tipo_cambio"):
+        tc = getattr(exogenas, "tipo_cambio", None)
+        if tc is None:
+            tabla["tc_rezago_1"] = np.nan
+            tabla["tc_delta_pct"] = np.nan
+        else:
+            # El TC es global por mes: el rezago se resuelve por calendario,
+            # sin agrupar por serie.
+            mapa = tc.to_dict()
+            t1 = pd.Series(
+                [mapa.get(p - 1, np.nan) for p in tabla["periodo"]],
+                index=tabla.index, dtype=float,
+            )
+            t2 = pd.Series(
+                [mapa.get(p - 2, np.nan) for p in tabla["periodo"]],
+                index=tabla.index, dtype=float,
+            )
+            tabla["tc_rezago_1"] = t1
+            tabla["tc_delta_pct"] = np.where(t2 > 0, (t1 - t2) / t2, np.nan)
+
+    if v2.get("categoria"):
+        mapa_categoria = getattr(exogenas, "categoria_por_serie", None)
+        if mapa_categoria is None:
+            tabla["categoria"] = pd.Series(
+                pd.array([None] * len(tabla), dtype="string")
+            ).astype("category")
+        else:
+            tabla["categoria"] = (
+                tabla["serie"].map(mapa_categoria).astype("category")
+            )
 
     # --- Categóricas --------------------------------------------------------
     # Se dejan como `category` de pandas: LightGBM las consume nativamente sin
