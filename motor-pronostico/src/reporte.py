@@ -174,6 +174,7 @@ class Reporte:
         self.inicio = datetime.now(timezone.utc)
         self.archivos: list[Path] = []
         self.notas: dict = {}
+        self.etapas: list[dict] = []
 
     # -- escritura ----------------------------------------------------------
 
@@ -200,10 +201,83 @@ class Reporte:
     def nota(self, clave: str, valor) -> None:
         self.notas[clave] = valor
 
+    def escribir_json(self, nombre: str, contenido) -> Path:
+        """Escribe un artefacto JSON, pasando por el mismo serializador que el
+        manifiesto para que dataclasses, Series y DataFrames no revienten."""
+        ruta = self.directorio / nombre
+        ruta.write_text(
+            json.dumps(_serializable(contenido), indent=2, ensure_ascii=False,
+                       default=str),
+            encoding="utf-8",
+        )
+        self.archivos.append(ruta)
+        return ruta
+
+    # -- flujo de etapas ----------------------------------------------------
+
+    def etapa(
+        self,
+        id: str,
+        titulo: str,
+        rf: str | None = None,
+        entrada: dict | None = None,
+        salida: dict | None = None,
+        decisiones: dict | None = None,
+        conteos: dict | None = None,
+        artefactos: list[str] | None = None,
+        notas: list[str] | None = None,
+        duracion_s: float | None = None,
+    ) -> None:
+        """Registra una etapa del pipeline para ``flujo.json``.
+
+        Este registro es el contrato con el tablero: el visor tiene UN
+        renderizador genérico de etapa, de modo que agregar una etapa nueva al
+        pipeline —una estratificación, una valorización— la hace aparecer en la
+        interfaz sin tocar el código del tablero. Las claves son estables:
+
+        - ``entrada``/``salida``: magnitudes que entran y salen (filas, series).
+        - ``decisiones``: parámetros metodológicos que gobiernan la etapa.
+        - ``conteos``: lo que la etapa observó o descartó, para auditar.
+        - ``artefactos``: nombres de archivo en el directorio de salidas.
+        """
+        if any(e["id"] == id for e in self.etapas):
+            raise ValueError(f"La etapa '{id}' ya fue registrada.")
+        self.etapas.append({
+            "id": id,
+            "titulo": titulo,
+            "rf": rf,
+            "entrada": _serializable(entrada or {}),
+            "salida": _serializable(salida or {}),
+            "decisiones": _serializable(decisiones or {}),
+            "conteos": _serializable(conteos or {}),
+            "artefactos": list(artefactos or []),
+            "notas": list(notas or []),
+            "duracion_s": round(duracion_s, 2) if duracion_s is not None else None,
+        })
+
     # -- cierre -------------------------------------------------------------
 
     def escribir_manifiesto(self, ruta_datos: Path) -> Path:
         fin = datetime.now(timezone.utc)
+
+        # flujo.json se escribe ANTES que el manifiesto, para que quede listado
+        # y hasheado como una salida más (RN-6).
+        if self.etapas:
+            codigo = _version_del_codigo(self.cfg.raiz)
+            self.escribir_json("flujo.json", {
+                "version": 1,
+                "corrida": {
+                    "directorio": self.directorio.name,
+                    "generado_en": fin.isoformat(timespec="seconds"),
+                    "config_sha256": self.cfg.hash_configuracion(),
+                    "datos_sha256": (
+                        _sha256(ruta_datos) if Path(ruta_datos).exists() else None
+                    ),
+                    "commit": codigo.get("commit"),
+                    "anulaciones": self.cfg.crudo.get("_anulaciones", []),
+                },
+                "etapas": self.etapas,
+            })
         manifiesto = {
             "generado_en": fin.isoformat(timespec="seconds"),
             "duracion_segundos": round((fin - self.inicio).total_seconds(), 1),
