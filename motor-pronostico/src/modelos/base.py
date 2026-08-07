@@ -17,6 +17,12 @@ Los parámetros que cada modelo necesite (el alfa del suavizado exponencial, los
 sí avanza mes a mes es el *estado* alimentado con valores reales observados, que
 es exactamente lo que hace un planificador cada mes cuando cierra el período.
 
+La RN-4 tiene una segunda mitad: la evaluación **multihorizonte** (quién
+sostiene el horizonte de planificación, no solo el mes siguiente) se aplica por
+igual a todos los brazos y se reporta por separado. Vive en
+``src/multihorizonte.py`` y reutiliza estas mismas fórmulas a un paso,
+realimentadas recursivamente — no cambia nada de este protocolo.
+
 Representación de los datos
 ---------------------------
 Panel **ancho**: índice = mes (``pd.Period``), columnas = serie, valores = la

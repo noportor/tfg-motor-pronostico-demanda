@@ -21,7 +21,8 @@ Decisiones que se justifican en la memoria
 - **Predicción a un paso.** El modelo se entrena una vez y sus parámetros quedan
   congelados; lo que avanza mes a mes son las features, construidas con los
   valores REALES hasta el mes anterior. Es exactamente el mismo protocolo que
-  siguen los demás brazos (RN-4).
+  siguen los demás brazos (RN-4). La proyección multihorizonte (recursiva, con
+  re-entrenamiento por origen) vive en ``src/multihorizonte.py``.
 """
 
 from __future__ import annotations
