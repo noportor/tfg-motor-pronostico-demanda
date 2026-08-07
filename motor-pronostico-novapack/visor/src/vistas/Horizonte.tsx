@@ -44,6 +44,12 @@ interface FilaHorizonte {
 
 type Metrica = "D" | "wmape_val" | "bias_val";
 
+/** Redondeo para celdas de tabla: número crudo, jamás re-parsear un string
+ * con locale (con separador de miles, "1.234,5" → NaN — y las variantes _gf
+ * superan 1.000 % en horizontes largos). */
+const redondear = (valor: number, decimales = 1): number =>
+  Number.isFinite(valor) ? Number(valor.toFixed(decimales)) : NaN;
+
 const ETIQUETAS: Record<Metrica, string> = {
   D: "D = WMAPE val. + |Bias val.| (%)",
   wmape_val: "WMAPE valorizado (%)",
@@ -263,9 +269,9 @@ export default function Horizonte() {
           modelo: fila.modelo,
           rol: rolDe(fila.modelo, benchmarks),
           horizonte: fila.horizonte,
-          "WMAPE val (%)": Number(numero(fila.wmape_val, 1).replace(",", ".")),
-          "Bias val (%)": Number(numero(fila.bias_val, 1).replace(",", ".")),
-          "D (%)": Number(numero(fila.D, 1).replace(",", ".")),
+          "WMAPE val (%)": redondear(fila.wmape_val),
+          "Bias val (%)": redondear(fila.bias_val),
+          "D (%)": redondear(fila.D),
           series: fila.n_series,
           "orígenes": fila.n_origenes,
           observaciones: fila.n_observaciones,

@@ -78,6 +78,39 @@ export interface NotasMotor {
   acierto: AciertoMotor;
 }
 
+/** Fila del contrafactual arriba/abajo de la nota `unidad_analisis`. */
+export interface FilaContrafactual {
+  modelo: string;
+  enfoque: "bottom_up" | "top_down";
+  wmape_val: number;
+  bias_val: number;
+  D: number;
+  series: number;
+  skus: number;
+  observaciones: number;
+  observaciones_excluidas_del_pareo: number;
+  delta_D_topdown: number;
+}
+
+/** Nota `unidad_analisis` del manifiesto — la evidencia de la serie elegida. */
+export interface NotasUnidadAnalisis {
+  skus_totales: number;
+  skus_multicombo: number;
+  proporcion_multicombo: number;
+  mediana_combos_en_multi: number;
+  deriva_participacion_pp_media: number;
+  pares_correlacion: number;
+  correlacion_mediana: number;
+  correlacion_yoy_mediana: number;
+  proporcion_pares_bajo_05: number;
+  skus_con_regimenes_mixtos: number;
+  skus_multi_clasificables: number;
+  skus_cohorte_multi: number;
+  skus_multiganador: number;
+  proporcion_multiganador: number;
+  contrafactual: FilaContrafactual[];
+}
+
 /** Nota `multihorizonte` del manifiesto (RN-4, protocolo separado). */
 export interface NotasMultihorizonte {
   origenes: string[];
@@ -119,6 +152,7 @@ export interface Manifiesto {
     lightgbm_mejor_iteracion?: number;
     respaldos_por_modelo?: Record<string, number>;
     multihorizonte?: NotasMultihorizonte;
+    unidad_analisis?: NotasUnidadAnalisis;
   } & Record<string, unknown>;
   salidas: { archivo: string; bytes: number; sha256: string }[];
 }
