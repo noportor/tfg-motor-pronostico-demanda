@@ -96,8 +96,24 @@ class Motor:
 
     # -- interfaz común -----------------------------------------------------
 
-    def ajustar(self, entrenamiento: pd.DataFrame, validacion: pd.DataFrame) -> None:
-        """Decide el modelo ganador por serie mirando SOLO validación."""
+    def ajustar(
+        self,
+        entrenamiento: pd.DataFrame,
+        validacion: pd.DataFrame,
+        criterio_externo: pd.DataFrame | None = None,
+    ) -> None:
+        """Decide el modelo ganador por serie mirando SOLO validación.
+
+        Args:
+            criterio_externo: matriz serie × candidato con el criterio ya
+                calculado. La usa la ablación pre-registrada de la ventana de
+                selección (``modelos.motor_seleccion=multihorizonte``): en vez
+                del error a un paso, el error multihorizonte de validación
+                (``multihorizonte.criterio_seleccion_multihorizonte``, que
+                verifica activamente la RN-2 por su lado). Todo lo demás — la
+                regla de argmin, el desempate, el respaldo, el reporte — es
+                idéntico, que es lo que hace comparable a la ablación.
+        """
         meses_validacion = pd.PeriodIndex(validacion.index)
 
         # Verificación activa de la RN-2: la ventana de decisión no puede
@@ -125,21 +141,31 @@ class Motor:
 
         errores = pd.DataFrame(index=pd.Index(series, name="serie"), columns=candidatos,
                                dtype=float)
-        for modelo in candidatos:
-            predicho = self.predicciones[modelo].reindex(
-                index=meses_validacion, columns=series
-            )
-            diferencia = (predicho - real).abs()
-            criterio = diferencia.mean(axis=0, skipna=True)
-            if self.informe.regla == "mae_mas_bias":
-                # Regla nativa del motor en producción: penaliza además el sesgo
-                # sistemático. Se deja parametrizada porque es la que la empresa
-                # aplica hoy, pero la principal del estudio es el MAE puro.
-                media_real = real.mean(axis=0, skipna=True)
-                media_predicha = predicho.mean(axis=0, skipna=True)
-                sesgo = (media_predicha - media_real).abs()
-                criterio = criterio + sesgo
-            errores[modelo] = criterio
+        if criterio_externo is not None:
+            faltan = [m for m in candidatos if m not in criterio_externo.columns]
+            if faltan:
+                raise ValueError(
+                    f"El criterio externo no cubre a los candidatos {faltan}."
+                )
+            for modelo in candidatos:
+                errores[modelo] = criterio_externo[modelo].reindex(series).to_numpy()
+            self.informe.regla = f"{self.informe.regla} (ventana multihorizonte)"
+        else:
+            for modelo in candidatos:
+                predicho = self.predicciones[modelo].reindex(
+                    index=meses_validacion, columns=series
+                )
+                diferencia = (predicho - real).abs()
+                criterio = diferencia.mean(axis=0, skipna=True)
+                if self.informe.regla == "mae_mas_bias":
+                    # Regla nativa del motor en producción: penaliza además el
+                    # sesgo sistemático. Se deja parametrizada porque es la que
+                    # la empresa aplica hoy.
+                    media_real = real.mean(axis=0, skipna=True)
+                    media_predicha = predicho.mean(axis=0, skipna=True)
+                    sesgo = (media_predicha - media_real).abs()
+                    criterio = criterio + sesgo
+                errores[modelo] = criterio
 
         matriz = errores.to_numpy(dtype=float)
         todo_nan = np.isnan(matriz).all(axis=1)

@@ -192,6 +192,21 @@ modelos:
   # Es además la regla que el documento declara (§3.2.1) y la de producción.
   motor_regla: "mae_mas_bias"
 
+  # VENTANA de selección del motor (qué error compara para elegir por serie):
+  #   un_paso       : error a un paso sobre validación — el protocolo declarado
+  #                   del estudio (RN-4 principal).
+  #   multihorizonte: error multihorizonte sobre validación — proyección
+  #                   recursiva desde el cierre de entrenamiento (h=1..12),
+  #                   la MISMA mecánica con la que después se lo evalúa. Es lo
+  #                   que hace el backtest del sistema en producción.
+  # ABLACIÓN PRE-REGISTRADA (2026-08-07, antes de ver su resultado): la corrida
+  # base mostró que el motor con selección a un paso cae de 1.º a 4.º en la
+  # curva D(h) — eligió modelos planos que colapsan al horizonte largo. La
+  # pregunta que esta ablación responde: ¿la caída es del CONCEPTO de selección
+  # por serie, o de la VENTANA con que selecciona?
+  #   --anular modelos.motor_seleccion=multihorizonte
+  motor_seleccion: "un_paso"
+
 # -----------------------------------------------------------------------------
 # 7. Features (RF-5)
 # -----------------------------------------------------------------------------

@@ -365,8 +365,21 @@ def comando_ejecutar(cfg) -> int:
     inicio = _paso(f"8/{total}", "Motor de selección (decide mirando SOLO validación)")
     # El motor decide comparando los pronósticos contra la serie REAL de
     # validación: la corrección del evento vive solo en el ajuste.
+    seleccion_modo = str(cfg.modelos.get("motor_seleccion", "un_paso"))
+    criterio_externo = None
+    if seleccion_modo == "multihorizonte":
+        # Ablación pre-registrada: la ventana de selección es el error
+        # multihorizonte de validación (proyección recursiva desde el cierre
+        # de entrenamiento) — la misma mecánica con la que el motor será
+        # evaluado, y la del backtest del sistema en producción.
+        print("      Ventana de selección: MULTIHORIZONTE sobre validación "
+              "(ablación pre-registrada)")
+        criterio_externo = multihorizonte.criterio_seleccion_multihorizonte(
+            cfg, modelos, panel, panel_real, panel_entrenamiento, cohorte_ajustada,
+        )
     motor = Motor(cfg, predicciones, panel_real)
-    motor.ajustar(panel_entrenamiento, panel_validacion)
+    motor.ajustar(panel_entrenamiento, panel_validacion,
+                  criterio_externo=criterio_externo)
     predicciones["motor"] = truncar_en_cero(
         enmascarar_fuera_de_vida(motor.predecir(panel), panel)
     )
@@ -378,7 +391,13 @@ def comando_ejecutar(cfg) -> int:
         entrada={"candidatos": len(cfg.modelos_candidatos)},
         salida={"series_con_eleccion": int(motor.informe.reparto.sum())},
         decisiones={"regla": motor.informe.regla,
-                    "ventana_de_decision": "validación (RN-2)"},
+                    "ventana_de_decision": (
+                        "validación multihorizonte h=1..12 desde el cierre de "
+                        "entrenamiento (RN-2; ablación pre-registrada)"
+                        if seleccion_modo == "multihorizonte"
+                        else "validación a un paso (RN-2)"
+                    ),
+                    "seleccion": seleccion_modo},
         conteos={
             "reparto_de_elegidos": motor.informe.reparto,
             "empates": motor.informe.empates,

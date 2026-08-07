@@ -244,6 +244,105 @@ def agregado_valorizado(obs: pd.DataFrame, claves: list[str]) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Selección multihorizonte del motor (ablación pre-registrada)
+# ---------------------------------------------------------------------------
+
+def criterio_por_serie(
+    proyeccion: pd.DataFrame, real: pd.DataFrame, regla: str
+) -> pd.Series:
+    """El criterio de selección por serie sobre un bloque de meses.
+
+    ``mae``: media de |pred − real| sobre los meses comparables.
+    ``mae_mas_bias``: le suma |media(pred) − media(real)| — la regla compuesta.
+    Series sin ningún mes comparable quedan en NaN: el motor las cuenta y les
+    asigna su respaldo declarado, nunca un número inventado.
+    """
+    y = real.to_numpy(dtype=float)
+    p = proyeccion.reindex(index=real.index, columns=real.columns).to_numpy(dtype=float)
+    comparable = ~np.isnan(y) & ~np.isnan(p)
+    n = comparable.sum(axis=0)
+
+    with np.errstate(invalid="ignore"):
+        suma_abs = np.where(comparable, np.abs(p - y), 0.0).sum(axis=0)
+        criterio = np.where(n > 0, suma_abs / np.maximum(n, 1), np.nan)
+        if regla == "mae_mas_bias":
+            media_real = np.where(n > 0, np.where(comparable, y, 0.0).sum(axis=0)
+                                  / np.maximum(n, 1), np.nan)
+            media_pred = np.where(n > 0, np.where(comparable, p, 0.0).sum(axis=0)
+                                  / np.maximum(n, 1), np.nan)
+            criterio = criterio + np.abs(media_pred - media_real)
+
+    return pd.Series(criterio, index=real.columns, name="criterio")
+
+
+def criterio_seleccion_multihorizonte(
+    cfg: Config,
+    modelos: dict[str, object],
+    panel_ajuste: pd.DataFrame,
+    panel_real: pd.DataFrame,
+    panel_entrenamiento: pd.DataFrame,
+    cohorte_ajustada: pd.DataFrame,
+) -> pd.DataFrame:
+    """Matriz serie × candidato con el error MULTIHORIZONTE de validación.
+
+    Es la ablación pre-registrada de la ventana de selección del motor: en vez
+    de comparar pronósticos a un paso, cada candidato proyecta la validación
+    completa desde el cierre de entrenamiento (h=1..H) con la MISMA mecánica
+    recursiva con la que después será evaluado — que es como selecciona el
+    backtest del sistema en producción.
+
+    RN-2 intacta y verificada activamente: el origen es el cierre de
+    entrenamiento y los meses comparados caen íntegros en validación. La
+    información usada es exactamente la misma que en la selección a un paso
+    (historia de entrenamiento + realidad de validación).
+    """
+    origen = cfg.particion.fin_entrenamiento
+    meses_validacion = pd.period_range(
+        origen + 1, cfg.particion.fin_validacion, freq="M"
+    )
+    horizonte = min(cfg.multihorizonte.horizonte_maximo, len(meses_validacion))
+    meses = meses_validacion[:horizonte]
+    if meses[-1] > cfg.particion.fin_validacion:
+        raise ValueError(
+            "La ventana de selección multihorizonte se sale de validación: "
+            f"llega a {meses[-1]} con cierre {cfg.particion.fin_validacion} (RN-2)."
+        )
+
+    historia = panel_ajuste.loc[panel_ajuste.index <= origen]
+    real = panel_real.reindex(index=meses)
+    media_entrenamiento = panel_entrenamiento.mean(axis=0, skipna=True)
+    ultimo_observado = historia.ffill().iloc[-1]
+    regla = str(cfg.modelos.get("motor_regla", "mae"))
+
+    proyector_lgbm = (
+        ProyectorLightGBM(cfg, cohorte_ajustada, modelos["lightgbm"])
+        if "lightgbm" in modelos else None
+    )
+
+    columnas: dict[str, pd.Series] = {}
+    for nombre, modelo in modelos.items():
+        if nombre == "lightgbm":
+            cruda = proyector_lgbm.proyectar(
+                origen, horizonte,
+                reentrenar=cfg.multihorizonte.reentrenar_lightgbm,
+            )
+        elif nombre == "croston":
+            cruda = proyectar_constante(modelo, historia, horizonte)
+        else:
+            cruda = proyectar_recursivo(modelo, historia, horizonte)
+
+        cruda = cruda.reindex(index=meses, columns=panel_ajuste.columns)
+        # Misma cascada de respaldo que la evaluación: ningún candidato llega
+        # a la comparación con huecos que otro no tenga.
+        completa = truncar_en_cero(
+            cruda.fillna(ultimo_observado).fillna(media_entrenamiento)
+        )
+        columnas[nombre] = criterio_por_serie(completa, real, regla)
+
+    return pd.DataFrame(columnas)
+
+
+# ---------------------------------------------------------------------------
 # El protocolo completo
 # ---------------------------------------------------------------------------
 
