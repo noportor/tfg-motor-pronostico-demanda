@@ -1,0 +1,12 @@
+# El snapshot de datos NO entra en la imagen: se monta como volumen. Meterlo en
+# una capa de Docker sería distribuir información confidencial (Anexo B).
+datos/
+salidas/
+notebooks/
+.git/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
