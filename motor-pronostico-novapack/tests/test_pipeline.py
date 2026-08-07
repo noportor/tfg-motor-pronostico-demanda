@@ -23,6 +23,8 @@ from src.config import cargar_config
 
 SALIDAS_ESPERADAS = (
     "inspeccion_datos.txt",
+    "inspeccion.json",
+    "flujo.json",
     "cohorte_flujo.csv",
     "particion.csv",
     "errores_por_serie.csv",
@@ -176,3 +178,73 @@ def test_los_errores_por_serie_cubren_todos_los_modelos(corrida):
 def test_ningun_modelo_predice_demanda_negativa(corrida):
     errores = pd.read_csv(corrida.ruta_salidas / "errores_por_serie.csv")
     assert (errores["media_predicha"] >= -1e-9).all()
+
+
+# ---------------------------------------------------------------------------
+# El contrato con el tablero: flujo.json e inspeccion.json
+# ---------------------------------------------------------------------------
+
+ETAPAS_MINIMAS = (
+    "carga", "series", "inspeccion", "particion_cohorte", "features",
+    "modelos", "motor", "metricas", "contraste", "figuras",
+)
+
+
+def test_flujo_json_cumple_el_contrato(corrida):
+    """El tablero renderiza las etapas genéricamente: si el schema se rompe,
+    la interfaz se rompe con él. Este es el contrato."""
+    flujo = json.loads(
+        (corrida.ruta_salidas / "flujo.json").read_text(encoding="utf-8")
+    )
+
+    assert flujo["version"] == 1
+    assert flujo["corrida"]["config_sha256"]
+    assert flujo["corrida"]["datos_sha256"]
+
+    ids = [etapa["id"] for etapa in flujo["etapas"]]
+    assert len(ids) == len(set(ids)), "Los ids de etapa deben ser únicos"
+    for esperada in ETAPAS_MINIMAS:
+        assert esperada in ids, f"Falta la etapa '{esperada}' en flujo.json"
+
+    for etapa in flujo["etapas"]:
+        assert etapa["titulo"], f"La etapa {etapa['id']} no tiene título"
+        for clave in ("entrada", "salida", "decisiones", "conteos"):
+            assert isinstance(etapa[clave], dict), (
+                f"{etapa['id']}.{clave} debe ser un dict"
+            )
+        assert isinstance(etapa["artefactos"], list)
+        # Todo artefacto declarado tiene que existir: una etapa que promete un
+        # archivo que no está rompería los enlaces del tablero.
+        for artefacto in etapa["artefactos"]:
+            assert (corrida.ruta_salidas / artefacto).exists(), (
+                f"La etapa {etapa['id']} declara '{artefacto}' y no existe"
+            )
+
+
+def test_flujo_json_esta_listado_en_el_manifiesto(corrida):
+    """RN-6: flujo.json es una salida más, con su hash en el manifiesto."""
+    manifiesto = json.loads(
+        (corrida.ruta_salidas / "manifiesto.json").read_text(encoding="utf-8")
+    )
+    listados = {s["archivo"] for s in manifiesto["salidas"]}
+    assert "flujo.json" in listados
+    assert "inspeccion.json" in listados
+
+
+def test_inspeccion_json_refleja_el_informe(corrida):
+    datos = json.loads(
+        (corrida.ruta_salidas / "inspeccion.json").read_text(encoding="utf-8")
+    )
+    for clave in ("rango_fechas", "n_sku", "n_combinaciones",
+                  "estacionalidad_mensual", "volumen_por_gestion"):
+        assert clave in datos, f"inspeccion.json no tiene '{clave}'"
+
+
+def test_registrar_dos_veces_la_misma_etapa_falla(cfg):
+    """Un id duplicado produciría dos nodos iguales en el diagrama del flujo."""
+    from src.reporte import Reporte
+
+    reporte = Reporte(cfg)
+    reporte.etapa("x", "Una etapa")
+    with pytest.raises(ValueError):
+        reporte.etapa("x", "La misma otra vez")

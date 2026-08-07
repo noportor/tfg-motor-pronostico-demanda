@@ -1,0 +1,14 @@
+# Dependencias EXCLUSIVAS del tablero (visor Streamlit).
+#
+# Se mantienen fuera de requirements.txt a propósito: el tablero es un VISOR de
+# solo lectura sobre salidas*/ y no participa en la producción de ningún número
+# de la tesis. Las versiones del pipeline (RN-5) no se ven afectadas por nada de
+# lo que se instale aquí.
+#
+# pandas va en 2.x en esta imagen porque streamlit lo exige (<3). No importa:
+# el tablero solo LEE CSVs y JSONs ya escritos por el pipeline.
+
+streamlit==1.41.1
+pandas==2.3.3
+altair==5.5.0
+PyYAML==6.0.2

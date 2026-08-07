@@ -32,3 +32,24 @@ services:
     extra_hosts:
       # El túnel a la base vive en el host, no en la red de Docker.
       - "host.docker.internal:host-gateway"
+
+  # ---------------------------------------------------------------------------
+  # Tablero: visor Streamlit de solo lectura sobre salidas*/.
+  #
+  #   docker compose up tablero        ->  http://localhost:8501
+  #
+  # El montaje es :ro a propósito — el tablero VISUALIZA corridas; ejecutarlas
+  # sigue siendo `docker compose run --rm tfg python main.py ejecutar`. Así el
+  # pipeline queda como única fuente de verdad y la interfaz no puede tocar ni
+  # los datos ni las salidas (RN-1/RN-6).
+  # ---------------------------------------------------------------------------
+  tablero:
+    build:
+      context: .
+      dockerfile: Dockerfile.tablero
+    image: motor-pronostico-tablero
+    ports:
+      - "8501:8501"
+    volumes:
+      - ..:/repo:ro
+    working_dir: /repo/motor-pronostico-novapack

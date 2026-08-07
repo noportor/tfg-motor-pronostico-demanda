@@ -71,6 +71,7 @@ def comando_inspeccionar(cfg) -> int:
         *informe_series.lineas(),
     ]
     ruta = reporte.texto("inspeccion_datos.txt", encabezado + informe.lineas)
+    reporte.escribir_json("inspeccion.json", informe.datos)
     print(f"\nInforme escrito en {ruta}")
     print("\nLeé el informe y ajustá `inclusion` en config/config.yaml antes de "
           "correr `main.py ejecutar`.")
@@ -88,6 +89,24 @@ def comando_ejecutar(cfg) -> int:
     df, informe_carga = carga.cargar(cfg)
     print(f"      {informe_carga.filas_validas:,} filas válidas de "
           f"{informe_carga.filas_leidas:,}")
+    reporte.etapa(
+        "carga", "Carga del archivo crudo", rf="RF-1",
+        entrada={"filas_leidas": informe_carga.filas_leidas},
+        salida={"filas_validas": informe_carga.filas_validas},
+        decisiones={
+            "mapeo_columnas": informe_carga.mapeo_aplicado,
+            "separador": cfg.datos.separador,
+            "codificacion": cfg.datos.codificacion,
+        },
+        conteos={
+            "fechas_no_convertidas": informe_carga.fechas_no_convertidas,
+            "cantidades_no_convertidas": informe_carga.cantidades_no_convertidas,
+            "filas_con_clave_nula": informe_carga.filas_con_clave_nula,
+            "filas_descartadas": informe_carga.filas_descartadas,
+        },
+        notas=[f"SHA-256 del archivo crudo: {informe_carga.sha256}"],
+        duracion_s=time.perf_counter() - inicio,
+    )
     _fin(inicio)
 
     # --- 2. Series ----------------------------------------------------------
@@ -96,6 +115,28 @@ def comando_ejecutar(cfg) -> int:
     print(f"      {informe_series.series_construidas:,} series · "
           f"{informe_series.filas_panel:,} filas · {informe_series.rango[0]}"
           f" .. {informe_series.rango[1]}")
+    reporte.etapa(
+        "series", "Construcción de las series mensuales", rf="RF-3",
+        entrada={"filas_validas": informe_carga.filas_validas},
+        salida={
+            "series": informe_series.series_construidas,
+            "filas_panel": informe_series.filas_panel,
+        },
+        decisiones={
+            "devoluciones": informe_series.tratamiento_devoluciones,
+            "rellenar_ceros_intermedios": cfg.series.rellenar_ceros_intermedios,
+        },
+        conteos={
+            "filas_negativas": informe_series.filas_negativas,
+            "unidades_negativas": informe_series.unidades_negativas,
+            "filas_fuera_de_periodo": informe_series.filas_fuera_de_periodo,
+            "combinaciones_totales": informe_series.combinaciones_totales,
+            "sin_venta_positiva": informe_series.combinaciones_sin_venta_positiva,
+            "meses_rellenados_con_cero": informe_series.meses_rellenados_con_cero,
+        },
+        notas=[f"Rango del panel: {informe_series.rango[0]} .. {informe_series.rango[1]}"],
+        duracion_s=time.perf_counter() - inicio,
+    )
     _fin(inicio)
 
     # --- 3. Inspección ------------------------------------------------------
@@ -106,6 +147,21 @@ def comando_ejecutar(cfg) -> int:
         ["INFORME DE CARGA", "-" * 78, *informe_carga.lineas(), "",
          "CONSTRUCCIÓN DE LAS SERIES", "-" * 78, *informe_series.lineas(),
          *informe_inspeccion.lineas],
+    )
+    reporte.escribir_json("inspeccion.json", informe_inspeccion.datos)
+    reporte.etapa(
+        "inspeccion", "Inspección de los datos (CRISP-DM)", rf="RF-2",
+        conteos={
+            "skus": informe_inspeccion.datos.get("n_sku"),
+            "canales": informe_inspeccion.datos.get("n_canales"),
+            "regionales": informe_inspeccion.datos.get("n_regionales"),
+            "combinaciones": informe_inspeccion.datos.get("n_combinaciones"),
+            "duplicados": informe_inspeccion.datos.get("registros_duplicados"),
+            "series_intermitentes_adi_1_32":
+                informe_inspeccion.datos.get("series_intermitentes_adi_1_32"),
+        },
+        artefactos=["inspeccion_datos.txt", "inspeccion.json"],
+        duracion_s=time.perf_counter() - inicio,
     )
     _fin(inicio)
 
@@ -123,6 +179,24 @@ def comando_ejecutar(cfg) -> int:
         print("      " + linea)
     reporte.tabla("cohorte_flujo.csv", informe_cohorte.tabla_flujo())
     reporte.tabla("particion.csv", resumen_particion)
+    reporte.etapa(
+        "particion_cohorte", "Partición temporal y criterios de inclusión", rf="RF-4",
+        entrada={"series": informe_cohorte.series_iniciales},
+        salida={"series_muestra_N": informe_cohorte.series_finales},
+        decisiones={
+            "fin_entrenamiento": str(cfg.particion.fin_entrenamiento),
+            "fin_validacion": str(cfg.particion.fin_validacion),
+            "fin_prueba": str(cfg.periodo.fin),
+            "umbrales_inclusion": informe_cohorte.umbrales,
+        },
+        conteos={
+            "cascada": informe_cohorte.flujo,
+            "excluidas_aislado": informe_cohorte.excluidas_aislado,
+        },
+        artefactos=["cohorte_flujo.csv", "particion.csv"],
+        notas=["Los criterios se miden SOLO sobre el bloque de entrenamiento."],
+        duracion_s=time.perf_counter() - inicio,
+    )
     _fin(inicio)
 
     # --- 5. Paneles ---------------------------------------------------------
@@ -142,6 +216,25 @@ def comando_ejecutar(cfg) -> int:
     inicio = _paso(f"6/{total}", "Construyendo features (sin fuga temporal)")
     tabla = features.construir_features(cohorte_larga, cfg)
     print(f"      {len(tabla):,} filas × {len(features.nombres_de_features(cfg))} features")
+    reporte.etapa(
+        "features", "Variables derivadas, sin fuga temporal", rf="RF-5",
+        entrada={"filas_panel": len(cohorte_larga)},
+        salida={
+            "filas": len(tabla),
+            "features": len(features.nombres_de_features(cfg)),
+        },
+        decisiones={
+            "rezagos": cfg.features.rezagos,
+            "ventanas_moviles": cfg.features.ventanas_moviles,
+            "calendario": {"mes": cfg.features.incluir_mes,
+                           "anio": cfg.features.incluir_anio,
+                           "tendencia": cfg.features.incluir_tendencia},
+            "categoricas": cfg.features.categoricas,
+        },
+        notas=["Toda feature usa solo información ANTERIOR al mes que predice "
+               "(RN-3); la garantía es tests/test_features.py."],
+        duracion_s=time.perf_counter() - inicio,
+    )
     _fin(inicio)
 
     # --- 7. Modelos ---------------------------------------------------------
@@ -149,6 +242,7 @@ def comando_ejecutar(cfg) -> int:
     modelos = construir_modelos(cfg, tabla)
     predicciones: dict[str, pd.DataFrame] = {}
     respaldos: dict[str, int] = {}
+    tiempos: dict[str, float] = {}
     parametros: list[pd.DataFrame] = []
 
     meses_evaluados = corte.validacion.append(corte.prueba)
@@ -164,6 +258,7 @@ def comando_ejecutar(cfg) -> int:
         )
         predicciones[nombre] = truncar_en_cero(completo)
         respaldos[nombre] = n_respaldos
+        tiempos[nombre] = round(time.perf_counter() - marca, 2)
         print(f"      {nombre:<18} {time.perf_counter() - marca:7.1f} s"
               f"   respaldos en validación+prueba: {n_respaldos:,}")
 
@@ -181,10 +276,33 @@ def comando_ejecutar(cfg) -> int:
         if getattr(modelo, "importancias", None) is not None:
             reporte.tabla("lightgbm_importancias.csv", modelo.importancias)
             reporte.nota("lightgbm_mejor_iteracion", modelo.mejor_iteracion)
-    _fin(inicio)
-
     if parametros:
         reporte.tabla("parametros_por_serie.csv", pd.concat(parametros, ignore_index=True))
+
+    artefactos_modelos = ["parametros_por_serie.csv"] if parametros else []
+    if any(getattr(m, "importancias", None) is not None for m in modelos.values()):
+        artefactos_modelos.append("lightgbm_importancias.csv")
+    reporte.etapa(
+        "modelos", "Ajuste y optimización de los modelos", rf="RF-6",
+        entrada={"series": panel.shape[1], "meses": panel.shape[0]},
+        salida={"modelos_ajustados": len(modelos)},
+        decisiones={
+            "modelos_activos": [m for m in cfg.modelos_activos if m != "motor"],
+            "exp_smooth": cfg.modelos.get("exp_smooth", {}),
+            "holt_winters": cfg.modelos.get("holt_winters", {}),
+            "croston": cfg.modelos.get("croston", {}),
+            "lightgbm": cfg.modelos.get("lightgbm", {}),
+        },
+        conteos={
+            "duracion_por_modelo_s": tiempos,
+            "respaldos_en_validacion_y_prueba": respaldos,
+        },
+        artefactos=artefactos_modelos,
+        notas=["Los parámetros se estiman SOLO con entrenamiento; validación la "
+               "usa únicamente la parada temprana de LightGBM (RN-2)."],
+        duracion_s=time.perf_counter() - inicio,
+    )
+    _fin(inicio)
 
     # --- 8. Motor -----------------------------------------------------------
     inicio = _paso(f"8/{total}", "Motor de selección (decide mirando SOLO validación)")
@@ -196,6 +314,20 @@ def comando_ejecutar(cfg) -> int:
     for linea in motor.informe.lineas():
         print("      " + linea)
     reporte.tabla("seleccion_motor.csv", motor.informe.seleccion)
+    reporte.etapa(
+        "motor", "Motor de selección por serie", rf="RF-6",
+        entrada={"candidatos": len(cfg.modelos_candidatos)},
+        salida={"series_con_eleccion": int(motor.informe.reparto.sum())},
+        decisiones={"regla": motor.informe.regla,
+                    "ventana_de_decision": "validación (RN-2)"},
+        conteos={
+            "reparto_de_elegidos": motor.informe.reparto,
+            "empates": motor.informe.empates,
+            "sin_candidato_valido": motor.informe.respaldos,
+        },
+        artefactos=["seleccion_motor.csv"],
+        duracion_s=time.perf_counter() - inicio,
+    )
     _fin(inicio)
 
     # --- 9. Métricas --------------------------------------------------------
@@ -220,6 +352,22 @@ def comando_ejecutar(cfg) -> int:
     reporte.tabla("resumen_metricas.csv", resumen_completo)
     reporte.tabla("tabla8_resultados.csv", metricas.tabla8(resumen_completo))
     print(metricas.tabla8(resumen_completo).round(3).to_string(index=False))
+    reporte.etapa(
+        "metricas", "Métricas por serie sobre el bloque de prueba", rf="RF-7",
+        entrada={"modelos": len(orden)},
+        salida={"series_evaluadas": int(resumen_completo["series"].iloc[0])},
+        decisiones={"metricas": ["MAE", "RMSE", "MAPE", "Bias", "MASE"],
+                    "resumen": "media y mediana, sobre la intersección de series"},
+        conteos={
+            "series_sin_mape": {
+                fila["modelo"]: int(fila["series_sin_mape"])
+                for _, fila in resumen_completo.iterrows()
+            },
+        },
+        artefactos=["errores_por_serie.csv", "resumen_metricas.csv",
+                    "tabla8_resultados.csv"],
+        duracion_s=time.perf_counter() - inicio,
+    )
     _fin(inicio)
 
     # --- 10. Pruebas estadísticas ------------------------------------------
@@ -262,6 +410,30 @@ def comando_ejecutar(cfg) -> int:
               f"gana en {100 * r.gana_propuesto / max(r.n_pares, 1):.1f} % de las series")
     print(f"      Tasa de acierto del motor: {100 * acierto['tasa_acierto']:.2f} % "
           f"(azar: {100 * acierto['azar_esperado']:.2f} %)")
+    artefactos_contraste = ["pruebas_estadisticas.txt", "victorias_por_modelo.csv",
+                            "rangos_friedman.csv"]
+    if resultados["friedman"].nemenyi is not None:
+        artefactos_contraste.append("nemenyi.csv")
+    reporte.etapa(
+        "contraste", "Contraste estadístico de la hipótesis", rf="RF-8",
+        entrada={"bloques_completos": resultados["n_bloques"]},
+        decisiones={
+            "metrica_contraste": metrica,
+            "alfa": cfg.pruebas.alfa,
+            "alternativa": cfg.pruebas.alternativa,
+            "esquema": "Wilcoxon pareado + Friedman con post hoc de Nemenyi "
+                       "(Demšar 2006)",
+        },
+        conteos={
+            "friedman_chi2": resultados["friedman"].chi2,
+            "friedman_p": resultados["friedman"].p,
+            "kendall_w": resultados["friedman"].kendall_w,
+            "comparaciones_wilcoxon": len(resultados["wilcoxon"]),
+            "tasa_acierto_motor": acierto["tasa_acierto"],
+        },
+        artefactos=artefactos_contraste,
+        duracion_s=time.perf_counter() - inicio,
+    )
     _fin(inicio)
 
     # --- 11. Figuras --------------------------------------------------------
@@ -279,6 +451,13 @@ def comando_ejecutar(cfg) -> int:
         resultados["friedman"].n_bloques,
         reporte.directorio / "figura4_diferencia_critica.png", dpi=dpi,
     ))
+    reporte.etapa(
+        "figuras", "Figuras del documento", rf="RF-9",
+        decisiones={"dpi": dpi, "escala_grises": True},
+        artefactos=["figura2_error.png", "figura3_dispersion.png",
+                    "figura4_diferencia_critica.png"],
+        duracion_s=time.perf_counter() - inicio,
+    )
     _fin(inicio)
 
     # --- 12. Manifiesto -----------------------------------------------------

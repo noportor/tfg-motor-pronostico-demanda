@@ -126,6 +126,30 @@ docker compose run --rm tfg python main.py ejecutar \
   --anular salidas.directorio=salidas_historial_48
 ```
 
+### 5 · Tablero — el experimento completo en el navegador
+
+```bash
+docker compose up tablero        # -> http://localhost:8501
+```
+
+Visor de **solo lectura** sobre `salidas*/`: el flujo etapa por etapa (con sus
+conteos y decisiones), la inspección interactiva, el dashboard de resultados,
+la optimización de cada modelo, la selección del motor, el contraste
+estadístico y un comparador de corridas para las ablaciones.
+
+Tres reglas lo gobiernan:
+
+1. **El pipeline es la única fuente de verdad.** El tablero no calcula
+   resultados ni escribe nada (el montaje es de solo lectura); si un número no
+   está en `salidas/`, el lugar de calcularlo es el pipeline.
+2. **Todo se descubre por convención.** Cada `salidas*/` con manifiesto es una
+   corrida; cada CSV/PNG nuevo aparece en la página *Artefactos*; cada etapa
+   registrada con `reporte.etapa(...)` aparece en *Flujo*; cada archivo nuevo
+   en `tablero/paginas/` es una página. Agregar una mejora no toca el tablero.
+3. **Prueba de humo antes de confiar:**
+   `docker compose run --rm tablero python tablero/humo.py` ejecuta las 9
+   páginas de verdad y falla si alguna revienta.
+
 ### Pruebas
 
 ```bash

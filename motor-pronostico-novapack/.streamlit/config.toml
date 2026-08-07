@@ -1,0 +1,12 @@
+# Tema del tablero. Se fija el modo claro: los colores de los gráficos están
+# validados contra superficie blanca (ver tablero/estilo.py); un modo oscuro
+# automático los dejaría sin validar, que es peor que no ofrecerlo.
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true
