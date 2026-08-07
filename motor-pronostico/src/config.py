@@ -462,6 +462,18 @@ def cargar_config(
         raise ErrorDeConfiguracion(
             f"modelos.motor_regla debe ser 'mae' o 'mae_mas_bias'; llegó '{regla}'."
         )
+    seleccion = modelos.get("motor_seleccion", "un_paso")
+    if seleccion not in ("un_paso", "multihorizonte"):
+        raise ErrorDeConfiguracion(
+            f"modelos.motor_seleccion debe ser 'un_paso' o 'multihorizonte'; "
+            f"llegó '{seleccion}'."
+        )
+    if seleccion == "multihorizonte" and multihorizonte is None:
+        raise ErrorDeConfiguracion(
+            "modelos.motor_seleccion='multihorizonte' requiere la sección "
+            "'multihorizonte' de la configuración (define el horizonte y el "
+            "re-entrenamiento del brazo global)."
+        )
 
     return Config(
         datos=datos,
