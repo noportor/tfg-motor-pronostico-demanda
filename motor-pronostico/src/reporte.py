@@ -47,6 +47,20 @@ def _sha256(ruta: Path) -> str:
     return h.hexdigest()
 
 
+def raiz_del_repositorio(desde: Path) -> Path | None:
+    """Busca hacia arriba el directorio que contiene ``.git``.
+
+    El proyecto es una carpeta DENTRO del repositorio de la tesis, que además
+    guarda el documento y los anexos. Dar por sentado que ``.git`` está junto al
+    código haría que el manifiesto no encontrara el commit en cuanto alguien
+    moviera el proyecto un nivel, que es exactamente lo que pasó.
+    """
+    for candidato in [desde, *desde.parents]:
+        if (candidato / ".git").exists():
+            return candidato
+    return None
+
+
 def _commit_leyendo_el_repositorio(raiz: Path) -> str | None:
     """Lee el commit directamente de ``.git/``, sin ejecutar git.
 
@@ -83,8 +97,20 @@ def _commit_leyendo_el_repositorio(raiz: Path) -> str | None:
     return None
 
 
-def _version_del_codigo(raiz: Path) -> dict:
+def _version_del_codigo(desde: Path) -> dict:
     """Commit que generó los números (RN-6). Si no se puede saber, se dice."""
+    raiz = raiz_del_repositorio(desde)
+    if raiz is None:
+        return {
+            "commit": None,
+            "arbol_limpio": None,
+            "origen": None,
+            "advertencia": (
+                f"No se encontró ningún repositorio git desde {desde} hacia arriba. "
+                "La RN-6 exige poder rastrear cada número hasta el commit que lo "
+                "generó."
+            ),
+        }
     try:
         commit = subprocess.run(
             ["git", "-C", str(raiz), "rev-parse", "HEAD"],
