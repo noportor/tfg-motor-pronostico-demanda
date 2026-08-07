@@ -33,6 +33,8 @@ SALIDAS_ESPERADAS = (
     "tabla_valorizada.csv",
     "pruebas_estadisticas.txt",
     "seleccion_motor.csv",
+    "unidad_estructura_sku.csv",
+    "unidad_contrafactual.csv",
     "multihorizonte_horizonte.csv",
     "multihorizonte_origen.csv",
     "victorias_por_modelo.csv",
@@ -60,6 +62,10 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
 
     for i in range(n_series):
         intermitente = i % 3 == 0
+        # Un tercio de los SKUs vive en DOS combinaciones canal-regional: sin
+        # SKUs multi-combinación la etapa de unidad de análisis no tendría
+        # nada que medir y el contrafactual arriba/abajo quedaría vacío.
+        sku = f"SKU-{(i - i % 3 if i % 3 < 2 else i):04d}"
         nivel = float(generador.integers(40, 400))
         estacional = 0.35 * nivel * np.sin(2 * np.pi * np.arange(meses) / 12)
         tendencia = generador.normal(0, 0.4) * np.arange(meses)
@@ -75,7 +81,7 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
                 continue  # solo se registran los meses CON venta
             filas.append({
                 "fecha": fecha.date().isoformat(),
-                "sku": f"SKU-{i:04d}",
+                "sku": sku,
                 "canal": canal,
                 "regional": regional,
                 "cantidad": round(float(valor), 2),
@@ -201,7 +207,7 @@ def test_ningun_modelo_predice_demanda_negativa(corrida):
 
 ETAPAS_MINIMAS = (
     "carga", "series", "inspeccion", "evento_exogeno", "particion_cohorte",
-    "features", "modelos", "motor", "metricas", "contraste",
+    "features", "modelos", "motor", "unidad_analisis", "metricas", "contraste",
     "evaluacion_multihorizonte", "figuras",
 )
 
@@ -235,6 +241,40 @@ def test_flujo_json_cumple_el_contrato(corrida):
             assert (corrida.ruta_salidas / artefacto).exists(), (
                 f"La etapa {etapa['id']} declara '{artefacto}' y no existe"
             )
+
+
+def test_los_json_emitidos_son_json_estricto(corrida):
+    """El visor los parsea con JSON.parse, que rechaza los tokens NaN e
+    Infinity. json.loads de Python los ACEPTA, así que sin este parser
+    estricto un NaN en una nota rompería todas las vistas sin que la suite
+    se entere (hallazgo de la auditoría adversarial)."""
+    def parser_estricto(token):
+        raise AssertionError(
+            f"Token '{token}' en un JSON emitido: JSON.parse del navegador "
+            "lo rechaza. Un valor incalculable debe publicarse como null."
+        )
+
+    for nombre in ("manifiesto.json", "flujo.json", "inspeccion.json"):
+        texto = (corrida.ruta_salidas / nombre).read_text(encoding="utf-8")
+        json.loads(texto, parse_constant=parser_estricto)
+
+
+def test_la_cohorte_sintetica_retiene_skus_multicombo(corrida):
+    """SALIDAS_ESPERADAS exige unidad_contrafactual.csv, que main solo escribe
+    si la cohorte retiene SKUs multi-combinación. Este assert hace EXPLÍCITO
+    ese acoplamiento con la fixture: si un cambio de umbrales lo rompe, el
+    mensaje señala la causa real y no un archivo faltante."""
+    manifiesto = json.loads(
+        (corrida.ruta_salidas / "manifiesto.json").read_text(encoding="utf-8")
+    )
+    nota = manifiesto["resultados"]["unidad_analisis"]
+    assert nota["skus_cohorte_multi"] >= 1, (
+        "La fixture sintética dejó de producir SKUs multi-combinación que "
+        "sobrevivan los criterios de inclusión: el contrafactual queda vacío "
+        "y unidad_contrafactual.csv no se escribe. Ajustá la fixture (o los "
+        "umbrales del config de prueba), no el contrato."
+    )
+    assert nota["contrafactual"], "El contrafactual no produjo filas"
 
 
 def test_flujo_json_esta_listado_en_el_manifiesto(corrida):

@@ -24,7 +24,7 @@ if str(RAIZ) not in sys.path:
 
 from src import (
     carga, eventos, features, figuras, inspeccion, metricas, multihorizonte,
-    particion, pruebas, series,
+    particion, pruebas, series, unidad_analisis,
 )
 from src.config import cargar_config
 from src.costos import cargar_costos
@@ -408,6 +408,68 @@ def comando_ejecutar(cfg) -> int:
     )
     _fin(inicio)
 
+    # --- 8b. Unidad de análisis ---------------------------------------------
+    inicio = _paso(f"8b/{total}", "Unidad de análisis: la evidencia de la serie "
+                                  "SKU-canal-regional")
+    # El maestro de costos se carga acá (lo reusa el paso 9): el contrafactual
+    # y la suite valorizada comparten la misma valorización.
+    maestro = cargar_costos(cfg)
+    eleccion_motor = motor.informe.seleccion.set_index("serie")["modelo_elegido"]
+    informe_unidad = unidad_analisis.evaluar(
+        cfg, panel_ajuste_largo, cohorte_ajustada, panel_real, eleccion_motor,
+        maestro.costo_por_serie if maestro.disponible else None,
+    )
+    for linea in informe_unidad.lineas():
+        print("      " + linea)
+    reporte.tabla("unidad_estructura_sku.csv", informe_unidad.tabla_sku)
+    artefactos_unidad = ["unidad_estructura_sku.csv"]
+    if not informe_unidad.contrafactual.empty:
+        reporte.tabla("unidad_contrafactual.csv", informe_unidad.contrafactual)
+        artefactos_unidad.append("unidad_contrafactual.csv")
+    reporte.nota("unidad_analisis", {
+        **informe_unidad.resumen,
+        "contrafactual": informe_unidad.contrafactual.to_dict("records"),
+    })
+    reporte.etapa(
+        "unidad_analisis", "Unidad de análisis: evidencia de la serie elegida",
+        entrada={"skus": informe_unidad.resumen["skus_totales"]},
+        salida={"skus_multicombo": informe_unidad.resumen["skus_multicombo"]},
+        decisiones={
+            "unidad": "SKU-canal-regional",
+            "estructura_medida_sobre": "bloque de entrenamiento, panel de ajuste",
+            "ventana_evento_excluida_de": "deriva y correlaciones — con la "
+                "copia de gestión previa el interanual daba 0 exacto (pares "
+                "fabricados); el régimen ADI-CV² sí usa el entrenamiento "
+                "completo (la copia es demanda real del año previo)",
+            "contrafactual_evaluado_sobre": "validación, un paso, valorizado, "
+                "máscara COMÚN a ambos enfoques (comparación pareada; "
+                "exclusiones contadas) — prueba jamás",
+            "solape_minimo_correlacion_meses": unidad_analisis.SOLAPE_MINIMO,
+            "umbrales_adi_cv2": [unidad_analisis.ADI_CORTE, unidad_analisis.CV2_CORTE],
+        },
+        conteos={
+            k: v for k, v in informe_unidad.resumen.items()
+            if isinstance(v, (int, float))
+        },
+        artefactos=artefactos_unidad,
+        notas=[
+            "Tres patas: (1) la unidad la impone la decisión — demanda "
+            "independiente por combinación y unidades NO agregables entre "
+            "SKUs; (2) independencia estadística dentro del SKU (deriva, "
+            "correlación, regímenes, ganadores distintos); (3) el mismo "
+            "modelo repartiendo desde el SKU agregado no domina (contrafactual "
+            "con participaciones rezagadas: sin fuga).",
+            "Declarables del contrafactual: las participaciones de meses "
+            "tardíos de validación usan reales de meses de validación "
+            "ANTERIORES — es el protocolo a un paso (solo información previa "
+            "al mes predicho), no fuga. El costo unitario es el del último "
+            "corte (posterior a validación); al aplicarse idéntico a ambos "
+            "enfoques no puede favorecer a ninguno.",
+        ],
+        duracion_s=time.perf_counter() - inicio,
+    )
+    _fin(inicio)
+
     # --- 9. Métricas --------------------------------------------------------
     inicio = _paso(f"9/{total}", "Métricas por serie sobre el bloque de prueba")
     escala = mae_naive_entrenamiento(panel_entrenamiento)
@@ -433,8 +495,8 @@ def comando_ejecutar(cfg) -> int:
 
     # --- Suite valorizada: la agregación entre SKUs y la métrica de decisión D.
     # Sin maestro de costos el experimento sigue (las métricas por serie y el
-    # contraste pareado no lo necesitan), pero se declara la omisión.
-    maestro = cargar_costos(cfg)
+    # contraste pareado no lo necesitan), pero se declara la omisión. El
+    # maestro ya se cargó en el paso 8b.
     artefactos_metricas = ["errores_por_serie.csv", "resumen_metricas.csv",
                            "tabla8_resultados.csv"]
     notas_metricas = []

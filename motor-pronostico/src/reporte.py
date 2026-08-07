@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import platform
 import subprocess
 import sys
@@ -306,14 +307,24 @@ class Reporte:
         }
         ruta = self.directorio / "manifiesto.json"
         ruta.write_text(
-            json.dumps(manifiesto, indent=2, ensure_ascii=False, default=str),
+            json.dumps(_serializable(manifiesto), indent=2, ensure_ascii=False,
+                       default=str),
             encoding="utf-8",
         )
         return ruta
 
 
 def _serializable(objeto):
-    """Convierte dataclasses, Series y DataFrames a estructuras JSON."""
+    """Convierte dataclasses, Series y DataFrames a estructuras JSON ESTRICTAS.
+
+    Los ``NaN``/``Infinity`` no existen en JSON: ``json.dumps`` los emitiría
+    como tokens que ``JSON.parse`` del navegador rechaza, y un solo NaN en una
+    nota rompería TODAS las vistas del visor (el manifiesto es la primera
+    carga). Un valor que no se pudo calcular se publica como ``null``:
+    visible, parseable y honesto — nunca un token inválido ni un cero
+    inventado. La prueba que lo garantiza parsea los JSON emitidos con un
+    parser estricto (``tests/test_pipeline.py``).
+    """
     if is_dataclass(objeto) and not isinstance(objeto, type):
         return _serializable(asdict(objeto))
     if isinstance(objeto, dict):
@@ -321,11 +332,15 @@ def _serializable(objeto):
     if isinstance(objeto, (list, tuple)):
         return [_serializable(v) for v in objeto]
     if isinstance(objeto, pd.DataFrame):
-        return objeto.to_dict(orient="records")
+        # Recursivo a propósito: las celdas NaN de un DataFrame (por ejemplo,
+        # el contrafactual sin demanda valorizada) también deben salir null.
+        return _serializable(objeto.to_dict(orient="records"))
     if isinstance(objeto, pd.Series):
         return {str(k): _serializable(v) for k, v in objeto.items()}
     if isinstance(objeto, pd.Period):
         return str(objeto)
+    if objeto is None or (isinstance(objeto, float) and not math.isfinite(objeto)):
+        return None
     return objeto
 
 
