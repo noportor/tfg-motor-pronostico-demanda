@@ -62,6 +62,88 @@ class InformeCarga:
         ]
 
 
+@dataclass
+class InformePoblacion:
+    """La población objetivo aplicada, con todo lo excluido contado."""
+
+    categorias_incluidas: list[str] = field(default_factory=list)
+    filas_antes: int = 0
+    filas_en_poblacion: int = 0
+    series_fuera: int = 0
+    skus_fuera: int = 0
+    filas_por_categoria_excluida: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def filas_fuera(self) -> int:
+        return self.filas_antes - self.filas_en_poblacion
+
+    def lineas(self) -> list[str]:
+        if not self.categorias_incluidas:
+            return [
+                "Población objetivo: PORTAFOLIO COMPLETO (sin acotar por "
+                "categoría — modo ablación).",
+            ]
+        salida = [
+            "Población objetivo: " + ", ".join(self.categorias_incluidas),
+            f"  Filas en población       : {self.filas_en_poblacion:,} de "
+            f"{self.filas_antes:,}",
+            f"  Fuera de población       : {self.filas_fuera:,} filas · "
+            f"{self.series_fuera:,} series · {self.skus_fuera:,} SKUs",
+        ]
+        for categoria, filas in sorted(
+            self.filas_por_categoria_excluida.items(), key=lambda kv: -kv[1]
+        ):
+            salida.append(f"    {categoria:<28} {filas:>9,} filas")
+        return salida
+
+
+def aplicar_poblacion(
+    df: pd.DataFrame, cfg: Config
+) -> tuple[pd.DataFrame, InformePoblacion]:
+    """Acota el crudo a la población objetivo declarada, contando lo excluido.
+
+    La población es una decisión de DISEÑO (qué estudia la tesis), no un
+    criterio de inclusión: se aplica antes de construir las series y su
+    justificación vive en config.yaml. Con la lista vacía (ablación) el filtro
+    es un passthrough declarado.
+    """
+    informe = InformePoblacion(filas_antes=len(df))
+    if cfg.poblacion is None or not cfg.poblacion.categorias:
+        informe.filas_en_poblacion = len(df)
+        return df, informe
+
+    if "categoria" not in df.columns:
+        raise ErrorDeCarga(
+            "La población objetivo está declarada pero el archivo no trae la "
+            "columna de categoría: re-extraé el snapshot con columna_categoria."
+        )
+
+    informe.categorias_incluidas = list(cfg.poblacion.categorias)
+    observadas = set(df["categoria"].dropna().unique())
+    inexistentes = [c for c in cfg.poblacion.categorias if c not in observadas]
+    if inexistentes:
+        # Un error tipográfico en una categoría descartaría en silencio una
+        # parte de la población. Se falla con la lista real a la vista.
+        raise ErrorDeCarga(
+            f"Categorías declaradas que NO existen en el archivo: {inexistentes}. "
+            f"Disponibles: {sorted(observadas)}"
+        )
+
+    dentro = df["categoria"].isin(cfg.poblacion.categorias)
+    fuera = df.loc[~dentro]
+    informe.filas_en_poblacion = int(dentro.sum())
+    informe.series_fuera = int(
+        fuera[["sku", "canal", "regional"]].drop_duplicates().shape[0]
+    )
+    informe.skus_fuera = int(fuera["sku"].nunique())
+    informe.filas_por_categoria_excluida = {
+        str(categoria): int(cuantas)
+        for categoria, cuantas in fuera["categoria"].value_counts().items()
+    }
+
+    return df.loc[dentro].reset_index(drop=True), informe
+
+
 def _sha256_de(ruta: Path) -> str:
     import hashlib
 
@@ -148,6 +230,10 @@ def cargar(cfg: Config, ruta: str | Path | None = None) -> tuple[pd.DataFrame, I
         canonica: bruto[cfg.datos.columnas[canonica]]
         for canonica in COLUMNAS_CANONICAS
     })
+    if "categoria" in cfg.datos.columnas:
+        df["categoria"] = (
+            bruto[cfg.datos.columnas["categoria"]].astype("string").str.strip()
+        )
 
     # --- Conversión de tipos, contando lo que no se pudo convertir -----------
     # Primero se intenta con formato homogéneo, que es lo rápido para cientos de

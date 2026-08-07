@@ -122,6 +122,13 @@ class ConfigMultihorizonte:
 
 
 @dataclass(frozen=True)
+class ConfigPoblacion:
+    """Población objetivo del estudio: categorías incluidas (vacío = todas)."""
+
+    categorias: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ConfigFeatures:
     rezagos: list[int]
     ventanas_moviles: list[int]
@@ -150,6 +157,7 @@ class Config:
     series: ConfigSeries
     evento: ConfigEvento | None
     inclusion: ConfigInclusion
+    poblacion: ConfigPoblacion | None
     multihorizonte: ConfigMultihorizonte | None
     modelos: dict[str, Any]
     features: ConfigFeatures
@@ -379,6 +387,26 @@ def cargar_config(
                 f"período declarado ({periodo.inicio})."
             )
 
+    poblacion = None
+    if crudo.get("poblacion") is not None:
+        p_obj = crudo["poblacion"]
+        categorias = p_obj.get("categorias") or []
+        if not isinstance(categorias, list):
+            raise ErrorDeConfiguracion(
+                "poblacion.categorias debe ser una lista de nombres de "
+                f"categoría (o vacía = todas); llegó {type(categorias).__name__}."
+            )
+        poblacion = ConfigPoblacion(
+            categorias=tuple(str(c).strip() for c in categorias if str(c).strip())
+        )
+        if poblacion.categorias and "categoria" not in datos.columnas:
+            raise ErrorDeConfiguracion(
+                "poblacion.categorias está declarada pero datos.columnas no "
+                "mapea la columna 'categoria': el snapshot tiene que traer la "
+                "categoría para poder acotar la población (re-extraer con "
+                "columna_categoria en extraccion.local.yaml)."
+            )
+
     multihorizonte = None
     if crudo.get("multihorizonte"):
         m = crudo["multihorizonte"]
@@ -482,6 +510,7 @@ def cargar_config(
         series=series,
         evento=evento,
         inclusion=inclusion,
+        poblacion=poblacion,
         multihorizonte=multihorizonte,
         modelos=modelos,
         features=features,

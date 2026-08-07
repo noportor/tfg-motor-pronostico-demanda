@@ -27,6 +27,8 @@ SALIDAS_ESPERADAS = (
     "flujo.json",
     "cohorte_flujo.csv",
     "particion.csv",
+    "fuera_de_muestra.csv",
+    "sensibilidad_umbrales.csv",
     "errores_por_serie.csv",
     "resumen_metricas.csv",
     "tabla8_resultados.csv",
@@ -60,12 +62,20 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
     fechas = pd.period_range(inicio, periods=meses, freq="M").to_timestamp()
     filas = []
 
+    # Las categorías REALES de la población objetivo (config.yaml): la corrida
+    # sintética pasa por el mismo filtro de población que la real. Se agrega
+    # además una categoría FUERA de la población para ejercitar la exclusión.
+    poblacion = ("PLASTICOS", "PAPELES", "PAPEL FOTOCOPIA",
+                 "ESCRITURA Y TRAZADO", "CUADERNOS")
+
     for i in range(n_series):
         intermitente = i % 3 == 0
         # Un tercio de los SKUs vive en DOS combinaciones canal-regional: sin
         # SKUs multi-combinación la etapa de unidad de análisis no tendría
         # nada que medir y el contrafactual arriba/abajo quedaría vacío.
-        sku = f"SKU-{(i - i % 3 if i % 3 < 2 else i):04d}"
+        numero_sku = i - i % 3 if i % 3 < 2 else i
+        sku = f"SKU-{numero_sku:04d}"
+        categoria = poblacion[numero_sku % len(poblacion)]
         nivel = float(generador.integers(40, 400))
         estacional = 0.35 * nivel * np.sin(2 * np.pi * np.arange(meses) / 12)
         tendencia = generador.normal(0, 0.4) * np.arange(meses)
@@ -85,6 +95,22 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
                 "canal": canal,
                 "regional": regional,
                 "cantidad": round(float(valor), 2),
+                "categoria": categoria,
+            })
+
+    # Dos series sanas FUERA de la población objetivo: si el filtro no las
+    # excluye (y las cuenta), la e2e tiene que enterarse.
+    for j, (canal, regional) in enumerate(
+        (("CANAL-1", "REGIONAL-A"), ("CANAL-2", "REGIONAL-B"))
+    ):
+        for fecha in fechas:
+            filas.append({
+                "fecha": fecha.date().isoformat(),
+                "sku": f"SKU-99{j}0",
+                "canal": canal,
+                "regional": regional,
+                "cantidad": 120.0,
+                "categoria": "LIMPIEZA",
             })
 
     pd.DataFrame(filas).to_csv(ruta, index=False)
@@ -206,9 +232,9 @@ def test_ningun_modelo_predice_demanda_negativa(corrida):
 # ---------------------------------------------------------------------------
 
 ETAPAS_MINIMAS = (
-    "carga", "series", "inspeccion", "evento_exogeno", "particion_cohorte",
-    "features", "modelos", "motor", "unidad_analisis", "metricas", "contraste",
-    "evaluacion_multihorizonte", "figuras",
+    "carga", "poblacion", "series", "inspeccion", "evento_exogeno",
+    "particion_cohorte", "features", "modelos", "motor", "unidad_analisis",
+    "metricas", "contraste", "evaluacion_multihorizonte", "figuras",
 )
 
 
@@ -241,6 +267,58 @@ def test_flujo_json_cumple_el_contrato(corrida):
             assert (corrida.ruta_salidas / artefacto).exists(), (
                 f"La etapa {etapa['id']} declara '{artefacto}' y no existe"
             )
+
+
+def test_la_poblacion_objetivo_excluye_y_cuenta(corrida):
+    """Las series LIMPIEZA de la fixture están fuera de la población: la etapa
+    debe excluirlas Y contarlas — nunca un filtro silencioso."""
+    flujo = json.loads(
+        (corrida.ruta_salidas / "flujo.json").read_text(encoding="utf-8")
+    )
+    etapa = next(e for e in flujo["etapas"] if e["id"] == "poblacion")
+    assert etapa["conteos"]["series_fuera"] == 2
+    assert "LIMPIEZA" in etapa["conteos"]["filas_por_categoria_excluida"]
+    assert etapa["salida"]["filas_en_poblacion"] < etapa["entrada"]["filas_validas"]
+
+
+def test_fuera_de_muestra_clasifica_todas_las_series(corrida):
+    """Contracara declarativa de la cascada: toda serie con estado y motivo."""
+    tabla = pd.read_csv(corrida.ruta_salidas / "fuera_de_muestra.csv")
+    seleccion = pd.read_csv(corrida.ruta_salidas / "seleccion_motor.csv")
+
+    assert tabla["serie"].is_unique
+    assert set(seleccion["serie"]) <= set(tabla["serie"]), (
+        "Toda serie de la cohorte debe estar clasificada"
+    )
+    incluidas = tabla.loc[tabla["incluida"]]
+    assert (incluidas["motivo_exclusion"] == "incluida").all()
+    excluidas = tabla.loc[~tabla["incluida"]]
+    assert (excluidas["motivo_exclusion"] != "incluida").all(), (
+        "Ninguna serie puede salir del estudio sin motivo atribuido"
+    )
+    assert set(tabla["estado"]) <= {
+        "activa", "dormida", "descontinuada", "nueva", "reciente", "insuficiente"
+    }
+
+
+def test_sensibilidad_reproduce_el_n_de_la_cascada(corrida):
+    """La fila de los umbrales BASE de la tabla de sensibilidad tiene que dar
+    exactamente el N de la cascada: si divergen, la sensibilidad está midiendo
+    otra cosa que los criterios reales."""
+    sensibilidad = pd.read_csv(corrida.ruta_salidas / "sensibilidad_umbrales.csv")
+    flujo = pd.read_csv(corrida.ruta_salidas / "cohorte_flujo.csv")
+
+    base = sensibilidad.loc[
+        (sensibilidad["historial_minimo_meses"]
+         == corrida.inclusion.historial_minimo_meses)
+        & (sensibilidad["proporcion_maxima_ceros"]
+           == corrida.inclusion.proporcion_maxima_ceros)
+        & (sensibilidad["volumen_minimo_unidades"]
+           == corrida.inclusion.volumen_minimo_unidades)
+    ]
+    assert len(base) == 1, "La grilla debe contener la combinación base"
+    n_cascada = int(flujo["series"].iloc[-1])
+    assert int(base["n_series"].iloc[0]) == n_cascada
 
 
 def test_los_json_emitidos_son_json_estricto(corrida):

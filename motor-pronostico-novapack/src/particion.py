@@ -284,3 +284,199 @@ def aplicar_criterios_inclusion(
 
     cohorte = panel.loc[panel["serie"].isin(set(vivas))].reset_index(drop=True)
     return cohorte, informe
+
+
+# ---------------------------------------------------------------------------
+# Clasificación por estados: clasificar y declarar, no descartar en silencio
+# ---------------------------------------------------------------------------
+
+def clasificar_estados(
+    panel_real: pd.DataFrame, fin_entrenamiento: pd.Period
+) -> pd.Series:
+    """Estado de actividad de cada serie al cierre de entrenamiento.
+
+    Es el molde del sistema de planificación en producción, medido sobre la
+    actividad OBSERVADA (la corrección del evento vive solo en el ajuste):
+
+    - ``insuficiente``: sin ninguna venta positiva en entrenamiento.
+    - ``nueva`` / ``reciente``: menos de 6 / 12 meses desde la primera venta.
+    - ``descontinuada`` / ``dormida``: 12+ / 6–11 meses sin vender al cierre.
+    - ``activa``: vendió dentro de los últimos 6 meses.
+    """
+    train = panel_real.loc[panel_real["periodo"] <= fin_entrenamiento]
+    positivos = train.loc[train["y"] > 0].groupby("serie")["periodo"]
+    primera = positivos.min()
+    ultima = positivos.max()
+
+    series = pd.Index(sorted(train["serie"].unique()), name="serie")
+    vida_meses = pd.Series(
+        [(fin_entrenamiento - primera[s]).n + 1 if s in primera.index else 0
+         for s in series], index=series,
+    )
+    sin_venta = pd.Series(
+        [(fin_entrenamiento - ultima[s]).n if s in ultima.index else np.inf
+         for s in series], index=series,
+    )
+
+    estado = np.select(
+        [
+            vida_meses == 0,
+            vida_meses < 6,
+            vida_meses < 12,
+            sin_venta >= 12,
+            sin_venta >= 6,
+        ],
+        ["insuficiente", "nueva", "reciente", "descontinuada", "dormida"],
+        default="activa",
+    )
+    return pd.Series(estado, index=series, name="estado")
+
+
+def tabla_fuera_de_muestra(
+    panel_real: pd.DataFrame,
+    panel_ajuste: pd.DataFrame,
+    series_cohorte: set[str],
+    cfg: Config,
+    particion: Particion,
+    valor_por_serie: pd.Series | None = None,
+) -> pd.DataFrame:
+    """Una fila por serie del panel: estado, si quedó en la muestra y por qué no.
+
+    Es la contracara declarativa de la cascada: ninguna serie sale del estudio
+    sin quedar clasificada (estado de actividad) y atribuida (el primer
+    criterio de la cascada que la excluyó, medido sobre el panel de AJUSTE,
+    exactamente como lo hace ``aplicar_criterios_inclusion``). El peso
+    valorizado de cada serie (demanda observada de entrenamiento × costo) hace
+    visible cuánto negocio queda fuera y dónde.
+    """
+    fin_train = particion.entrenamiento[-1]
+    entrenamiento = panel_ajuste.loc[panel_ajuste["periodo"] <= fin_train]
+    todas = pd.Index(sorted(panel_ajuste["serie"].unique()), name="serie")
+
+    agrupado = entrenamiento.groupby("serie", observed=True)["y"]
+    meses = agrupado.size().reindex(todas, fill_value=0)
+    volumen = agrupado.sum().reindex(todas, fill_value=0.0)
+    ceros = (
+        entrenamiento.assign(es_cero=lambda d: (d["y"] <= 0).astype(int))
+        .groupby("serie", observed=True)["es_cero"].sum()
+        .reindex(todas, fill_value=0)
+    )
+    proporcion_ceros = pd.Series(
+        np.where(meses > 0, ceros / meses.clip(lower=1), 1.0), index=todas
+    )
+    en_validacion = set(
+        panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.validacion), "serie"]
+    )
+    en_prueba = set(
+        panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.prueba), "serie"]
+    )
+
+    # El motivo sigue el ORDEN de la cascada: el primero que falla, ese es.
+    condiciones = [
+        (meses == 0).to_numpy(),
+        (meses < cfg.inclusion.historial_minimo_meses).to_numpy(),
+        (proporcion_ceros > cfg.inclusion.proporcion_maxima_ceros).to_numpy(),
+        (volumen < cfg.inclusion.volumen_minimo_unidades).to_numpy(),
+        np.array([s not in en_validacion for s in todas]),
+        np.array([s not in en_prueba for s in todas]),
+    ]
+    motivos = [
+        "sin_historia_en_entrenamiento",
+        f"historial<{cfg.inclusion.historial_minimo_meses}m",
+        f"ceros>{cfg.inclusion.proporcion_maxima_ceros:.2f}",
+        f"volumen<{cfg.inclusion.volumen_minimo_unidades:.0f}u",
+        "ausente_en_validacion",
+        "ausente_en_prueba",
+    ]
+    motivo = pd.Series(
+        np.select(condiciones, motivos, default="incluida"), index=todas
+    )
+
+    tabla = pd.DataFrame({
+        "serie": todas,
+        "estado": clasificar_estados(panel_real, fin_train).reindex(todas)
+        .fillna("insuficiente"),
+        "incluida": [s in series_cohorte for s in todas],
+        "motivo_exclusion": motivo.to_numpy(),
+        "meses_entrenamiento": meses.to_numpy(),
+        "proporcion_ceros": proporcion_ceros.round(4).to_numpy(),
+        "volumen_entrenamiento": volumen.round(2).to_numpy(),
+    }).reset_index(drop=True)
+
+    if valor_por_serie is not None and not valor_por_serie.empty:
+        tabla["valor_entrenamiento"] = (
+            valor_por_serie.reindex(tabla["serie"]).round(2).to_numpy()
+        )
+    return tabla
+
+
+def sensibilidad_umbrales(
+    panel_ajuste: pd.DataFrame,
+    particion: Particion,
+    valor_por_serie: pd.Series | None = None,
+    historial: tuple[int, ...] = (24, 36, 48),
+    ceros: tuple[float, ...] = (0.60, 0.70, 0.80, 0.90),
+    volumen: tuple[float, ...] = (0.0, 50.0, 100.0),
+) -> pd.DataFrame:
+    """N de la muestra (y cobertura valorizada) para cada combinación de umbrales.
+
+    Muestra que la muestra declarada no es un punto arbitrario: el lector ve
+    cómo se movería el N —y cuánta demanda valorizada de ENTRENAMIENTO
+    cubriría— bajo umbrales alternativos. Los estadísticos por serie se miden
+    UNA vez con la misma semántica de ``aplicar_criterios_inclusion`` (la
+    consistencia la garantiza una prueba: la fila de los umbrales base debe
+    reproducir exactamente el N de la cascada).
+    """
+    fin_train = particion.entrenamiento[-1]
+    entrenamiento = panel_ajuste.loc[panel_ajuste["periodo"] <= fin_train]
+    todas = pd.Index(sorted(panel_ajuste["serie"].unique()), name="serie")
+
+    agrupado = entrenamiento.groupby("serie", observed=True)["y"]
+    meses = agrupado.size().reindex(todas, fill_value=0)
+    volumen_train = agrupado.sum().reindex(todas, fill_value=0.0)
+    ceros_train = (
+        entrenamiento.assign(es_cero=lambda d: (d["y"] <= 0).astype(int))
+        .groupby("serie", observed=True)["es_cero"].sum()
+        .reindex(todas, fill_value=0)
+    )
+    proporcion = pd.Series(
+        np.where(meses > 0, ceros_train / meses.clip(lower=1), 1.0), index=todas
+    )
+    en_validacion = set(
+        panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.validacion), "serie"]
+    )
+    en_prueba = set(
+        panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.prueba), "serie"]
+    )
+    presencia = pd.Series(
+        [s in en_validacion and s in en_prueba for s in todas], index=todas
+    )
+
+    valor_total = (
+        float(valor_por_serie.sum())
+        if valor_por_serie is not None and not valor_por_serie.empty else None
+    )
+
+    filas = []
+    for h in historial:
+        for c in ceros:
+            for v in volumen:
+                incluida = (
+                    (meses >= max(h, 1)) & (proporcion <= c)
+                    & (volumen_train >= v) & presencia
+                )
+                fila = {
+                    "historial_minimo_meses": h,
+                    "proporcion_maxima_ceros": c,
+                    "volumen_minimo_unidades": v,
+                    "n_series": int(incluida.sum()),
+                }
+                if valor_total:
+                    cubierto = float(
+                        valor_por_serie.reindex(todas[incluida]).sum()
+                    )
+                    fila["pct_demanda_train_valorizada"] = round(
+                        100.0 * cubierto / valor_total, 2
+                    )
+                filas.append(fila)
+    return pd.DataFrame(filas)

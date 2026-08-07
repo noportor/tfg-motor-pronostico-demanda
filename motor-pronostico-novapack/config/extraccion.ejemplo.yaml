@@ -41,6 +41,13 @@ origen:
   # productos es en dinero (WMAE ponderado por costo).
   columna_costo: null
 
+  # Opcional. Categoría comercial del SKU. Si se declara, el snapshot lleva una
+  # columna `categoria` y habilita la POBLACIÓN OBJETIVO del estudio
+  # (config.yaml, sección `poblacion`): acotar el experimento a categorías de
+  # comportamiento conocido. Los nombres de categoría son términos genéricos
+  # del rubro (no identifican a la empresa) y se escriben tal cual.
+  columna_categoria: null
+
   # Opcional. Columna adicional cuyo total se reporta por tramo de años antes de
   # extraer, como control de integridad.
   #

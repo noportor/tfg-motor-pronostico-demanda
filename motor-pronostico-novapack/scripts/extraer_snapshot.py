@@ -139,10 +139,17 @@ def cargar_origen(ruta: Path = RUTA_ORIGEN) -> dict:
             f"origen.columna_costo = '{costo}' no es un identificador válido."
         )
 
+    categoria = origen.get("columna_categoria")
+    if categoria is not None and not PATRON_IDENTIFICADOR.match(str(categoria)):
+        raise ErrorDeExtraccion(
+            f"origen.columna_categoria = '{categoria}' no es un identificador válido."
+        )
+
     return {
         "tabla": tabla,
         "columnas": {rol: str(columnas[rol]) for rol in ROLES},
         "columna_costo": str(costo) if costo else None,
+        "columna_categoria": str(categoria) if categoria else None,
         "columna_de_control": str(control) if control else None,
         "anio_de_corte_del_control": int(origen.get("anio_de_corte_del_control", 2020)),
     }
@@ -162,6 +169,13 @@ def construir_consultas(origen: dict) -> tuple[str, str]:
     columna_costo = (
         f"t.{origen['columna_costo']}" if origen["columna_costo"] else "NULL"
     )
+    # La categoría habilita la POBLACIÓN OBJETIVO del estudio (config.yaml,
+    # sección `poblacion`): un grupo representativo de categorías con
+    # comportamiento conocido. Son nombres genéricos del rubro papelero, no
+    # identifican a la empresa; se declaran tal cual.
+    columna_categoria = (
+        f"t.{origen['columna_categoria']}" if origen["columna_categoria"] else "NULL"
+    )
 
     consulta = f"""
 SELECT
@@ -170,7 +184,8 @@ SELECT
     t.{c['canal']}                        AS canal,
     t.{c['regional']}                     AS regional,
     t.{c['cantidad']}                     AS cantidad,
-    {columna_costo}                       AS costo
+    {columna_costo}                       AS costo,
+    {columna_categoria}                   AS categoria
 FROM {tabla} AS t
 WHERE (t.{c['anio']} * 100 + t.{c['mes']}) BETWEEN %(desde)s AND %(hasta)s
   AND t.{c['cantidad']} IS NOT NULL
@@ -316,6 +331,9 @@ def main() -> int:
         periodo_min: int | None = None
         periodo_max: int | None = None
 
+        con_categoria = origen["columna_categoria"] is not None
+        categorias_vistas: set[str] = set()
+
         with conexion.cursor(name="tfg_snapshot") as cur:
             cur.itersize = 50_000
             cur.execute(consulta, {"desde": desde, "hasta": hasta})
@@ -323,9 +341,12 @@ def main() -> int:
             with destino.open("w", encoding="utf-8", newline="") as fh:
                 escritor = csv.writer(fh, delimiter=cfg.datos.separador,
                                       lineterminator="\n")
-                escritor.writerow(["fecha", "sku", "canal", "regional", "cantidad"])
+                encabezado = ["fecha", "sku", "canal", "regional", "cantidad"]
+                if con_categoria:
+                    encabezado.append("categoria")
+                escritor.writerow(encabezado)
 
-                for periodo, sku, canal, regional, cantidad, costo in cur:
+                for periodo, sku, canal, regional, cantidad, costo, categoria in cur:
                     if not args.sin_seudonimizar:
                         if sku not in seudonimos:
                             seudonimos[sku] = f"SKU-{len(seudonimos) + 1:04d}"
@@ -333,7 +354,7 @@ def main() -> int:
                     else:
                         sku_salida = sku
 
-                    escritor.writerow([
+                    fila = [
                         _fecha_iso(int(periodo)),
                         sku_salida,
                         canal,
@@ -341,7 +362,12 @@ def main() -> int:
                         # repr corto y estable: evita notación científica y
                         # diferencias de redondeo entre corridas.
                         f"{float(cantidad):.6f}".rstrip("0").rstrip("."),
-                    ])
+                    ]
+                    if con_categoria:
+                        fila.append(categoria)
+                        if categoria is not None:
+                            categorias_vistas.add(str(categoria))
+                    escritor.writerow(fila)
                     # Costo: constante por serie en la fuente; se toma el primer
                     # valor no nulo y positivo.
                     clave = (sku_salida, str(canal), str(regional))
@@ -405,6 +431,7 @@ def main() -> int:
         "filas_escritas": filas_escritas,
         "filas_negativas": negativas,
         "suma_cantidad": round(suma, 6),
+        "categorias_distintas": sorted(categorias_vistas) if con_categoria else None,
         "skus_distintos": len(seudonimos) if seudonimos else None,
         "series_con_costo": len(costos) if origen["columna_costo"] else None,
         "sha256_costos": _sha256(ruta_costos) if ruta_costos else None,

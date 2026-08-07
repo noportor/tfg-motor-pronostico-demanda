@@ -52,6 +52,9 @@ def comando_inspeccionar(cfg) -> int:
     df, informe_carga = carga.cargar(cfg)
     for linea in informe_carga.lineas():
         print("      " + linea)
+    df, informe_poblacion = carga.aplicar_poblacion(df, cfg)
+    for linea in informe_poblacion.lineas():
+        print("      " + linea)
     _fin(inicio)
 
     inicio = _paso("2/3", "Construyendo las series mensuales")
@@ -109,6 +112,38 @@ def comando_ejecutar(cfg) -> int:
             "filas_descartadas": informe_carga.filas_descartadas,
         },
         notas=[f"SHA-256 del archivo crudo: {informe_carga.sha256}"],
+        duracion_s=time.perf_counter() - inicio,
+    )
+    _fin(inicio)
+
+    # --- 1b. Población objetivo ---------------------------------------------
+    inicio = _paso(f"1b/{total}", "Población objetivo")
+    df, informe_poblacion = carga.aplicar_poblacion(df, cfg)
+    for linea in informe_poblacion.lineas():
+        print("      " + linea)
+    reporte.etapa(
+        "poblacion", "Población objetivo del estudio",
+        entrada={"filas_validas": informe_poblacion.filas_antes},
+        salida={"filas_en_poblacion": informe_poblacion.filas_en_poblacion},
+        decisiones={
+            "categorias": (informe_poblacion.categorias_incluidas
+                           or "portafolio completo (ablación)"),
+        },
+        conteos={
+            "filas_fuera": informe_poblacion.filas_fuera,
+            "series_fuera": informe_poblacion.series_fuera,
+            "skus_fuera": informe_poblacion.skus_fuera,
+            "filas_por_categoria_excluida":
+                informe_poblacion.filas_por_categoria_excluida,
+        },
+        notas=[
+            "Decisión de DISEÑO, no criterio de inclusión: el estudio se acota "
+            "a un grupo representativo de categorías con comportamiento "
+            "comercial conocido (dos regímenes verificados: recurrente y "
+            "estacional de campaña). Analizar el portafolio completo agrega "
+            "ruido de series sin patrón interpretable. La ablación "
+            "poblacion.categorias=[] vuelve al portafolio completo.",
+        ],
         duracion_s=time.perf_counter() - inicio,
     )
     _fin(inicio)
@@ -215,6 +250,37 @@ def comando_ejecutar(cfg) -> int:
         print("      " + linea)
     reporte.tabla("cohorte_flujo.csv", informe_cohorte.tabla_flujo())
     reporte.tabla("particion.csv", resumen_particion)
+
+    # --- Clasificar y declarar, no descartar en silencio ---------------------
+    # El maestro de costos se carga acá (lo reusan 8b y 9): pesa lo excluido.
+    maestro = cargar_costos(cfg)
+    valor_por_serie = None
+    if maestro.disponible:
+        train_real = panel_largo.loc[
+            panel_largo["periodo"] <= cfg.particion.fin_entrenamiento
+        ]
+        costo_train = train_real["serie"].map(maestro.costo_por_serie)
+        valor_por_serie = (
+            (train_real["y"] * costo_train).groupby(train_real["serie"]).sum()
+            .dropna()
+        )
+
+    fuera = particion.tabla_fuera_de_muestra(
+        panel_largo, panel_ajuste_largo,
+        set(cohorte_ajustada["serie"].unique()), cfg, corte, valor_por_serie,
+    )
+    reporte.tabla("fuera_de_muestra.csv", fuera)
+    reparto_estados = (
+        fuera.groupby(["estado", "incluida"], observed=True).size()
+        .rename("series").reset_index()
+        .to_dict("records")
+    )
+
+    sensibilidad = particion.sensibilidad_umbrales(
+        panel_ajuste_largo, corte, valor_por_serie
+    )
+    reporte.tabla("sensibilidad_umbrales.csv", sensibilidad)
+
     reporte.etapa(
         "particion_cohorte", "Partición temporal y criterios de inclusión", rf="RF-4",
         entrada={"series": informe_cohorte.series_iniciales},
@@ -228,9 +294,20 @@ def comando_ejecutar(cfg) -> int:
         conteos={
             "cascada": informe_cohorte.flujo,
             "excluidas_aislado": informe_cohorte.excluidas_aislado,
+            "estados_por_inclusion": reparto_estados,
         },
-        artefactos=["cohorte_flujo.csv", "particion.csv"],
-        notas=["Los criterios se miden SOLO sobre el bloque de entrenamiento."],
+        artefactos=["cohorte_flujo.csv", "particion.csv", "fuera_de_muestra.csv",
+                    "sensibilidad_umbrales.csv"],
+        notas=[
+            "Los criterios se miden SOLO sobre el bloque de entrenamiento.",
+            "fuera_de_muestra.csv clasifica TODAS las series (estado de "
+            "actividad al cierre de entrenamiento, molde del sistema en "
+            "producción) con el criterio que las excluyó y su peso valorizado: "
+            "ninguna serie sale del estudio en silencio.",
+            "sensibilidad_umbrales.csv: el N y la cobertura valorizada bajo "
+            "umbrales alternativos — la muestra declarada no es un punto "
+            "arbitrario.",
+        ],
         duracion_s=time.perf_counter() - inicio,
     )
     _fin(inicio)
@@ -411,9 +488,8 @@ def comando_ejecutar(cfg) -> int:
     # --- 8b. Unidad de análisis ---------------------------------------------
     inicio = _paso(f"8b/{total}", "Unidad de análisis: la evidencia de la serie "
                                   "SKU-canal-regional")
-    # El maestro de costos se carga acá (lo reusa el paso 9): el contrafactual
-    # y la suite valorizada comparten la misma valorización.
-    maestro = cargar_costos(cfg)
+    # El maestro de costos ya se cargó en el paso 4; acá se reusa: el
+    # contrafactual y la suite valorizada comparten la misma valorización.
     eleccion_motor = motor.informe.seleccion.set_index("serie")["modelo_elegido"]
     informe_unidad = unidad_analisis.evaluar(
         cfg, panel_ajuste_largo, cohorte_ajustada, panel_real, eleccion_motor,
@@ -496,7 +572,7 @@ def comando_ejecutar(cfg) -> int:
     # --- Suite valorizada: la agregación entre SKUs y la métrica de decisión D.
     # Sin maestro de costos el experimento sigue (las métricas por serie y el
     # contraste pareado no lo necesitan), pero se declara la omisión. El
-    # maestro ya se cargó en el paso 8b.
+    # maestro ya se cargó en el paso 4.
     artefactos_metricas = ["errores_por_serie.csv", "resumen_metricas.csv",
                            "tabla8_resultados.csv"]
     notas_metricas = []

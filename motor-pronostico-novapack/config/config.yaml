@@ -24,6 +24,7 @@ datos:
     canal: "canal"
     regional: "regional"
     cantidad: "cantidad"
+    categoria: "categoria"
 
   # Separador y codificación del CSV (se ignoran si el archivo es .xlsx).
   separador: ","
@@ -42,6 +43,34 @@ periodo:
   mes_inicio_gestion: 4          # abril
   inicio: "2017-04"              # inicio de la gestión 2018
   fin: "2026-03"                 # cierre de la gestión 2026
+
+# -----------------------------------------------------------------------------
+# 2b. Población objetivo (decisión 2026-08-07)
+# -----------------------------------------------------------------------------
+# El estudio se acota a un grupo REPRESENTATIVO de categorías con comportamiento
+# comercial conocido: analizar el portafolio completo agrega ruido de series sin
+# patrón interpretable y diluye la lectura de los resultados. El grupo combina
+# los dos regímenes de demanda del negocio, verificados en los datos:
+#
+#   recurrentes : PLASTICOS (41 % del valor anual en nov–feb), PAPELES,
+#                 PAPEL FOTOCOPIA (34 % ≈ distribución plana)
+#   estacionales: ESCRITURA Y TRAZADO (75 % nov–feb),
+#                 CUADERNOS (89 % nov–feb; 39 % del año en su mes pico)
+#
+# Cobertura: 685 SKUs, 4.439 series, 72,3 % del valor del negocio.
+# Los nombres de categoría son términos genéricos del rubro papelero: no
+# identifican a la empresa y se declaran tal cual.
+#
+# ABLACIÓN (portafolio completo): --anular poblacion.categorias=[]
+# Las corridas previas sobre el portafolio completo se conservan como evidencia
+# de que las conclusiones no dependen de este recorte.
+poblacion:
+  categorias:
+    - "PLASTICOS"
+    - "PAPELES"
+    - "PAPEL FOTOCOPIA"
+    - "ESCRITURA Y TRAZADO"
+    - "CUADERNOS"
 
 # -----------------------------------------------------------------------------
 # 3. Partición en tres bloques (RN-2)
