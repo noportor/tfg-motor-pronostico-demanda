@@ -1,0 +1,16 @@
+# Finales de línea normalizados a LF en el repositorio.
+#
+# Sin esto, en Windows cada `git checkout` reescribe los archivos a CRLF y el
+# árbol de trabajo figura permanentemente sucio. Eso no es cosmético: el
+# manifiesto de cada corrida registra si había cambios sin commitear al
+# ejecutar (RN-6), y un árbol sucio de mentira convierte ese campo en ruido.
+* text=auto eol=lf
+
+# Binarios: git no los toca.
+*.png binary
+*.pdf binary
+*.xlsx binary
+*.docx binary
+*.doc  binary
+*.pptx binary
+*.zip  binary

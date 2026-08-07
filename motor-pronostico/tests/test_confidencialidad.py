@@ -84,6 +84,15 @@ EXCEPCIONES: dict[tuple[str, str], str] = {
     (_YO, nombre): "Este archivo ES la lista de patrones; los contiene por definición."
     for nombre, _ in PATRONES_PROHIBIDOS
 }
+_UBICACION_PUBLICA = (
+    "La delimitación espacial del estudio es pública: figura en la portada de la "
+    "tesis y es la sede de la universidad. No identifica a la empresa."
+)
+EXCEPCIONES.update({
+    ("README.md", "regional real"): _UBICACION_PUBLICA,
+    (f"{SUBCARPETA}REQUERIMIENTOS.md", "regional real"): _UBICACION_PUBLICA,
+    (f"{SUBCARPETA}README.md", "regional real"): _UBICACION_PUBLICA,
+})
 
 # Rutas versionadas que no se revisan. Los documentos ofimáticos son binarios
 # comprimidos: el control NO los inspecciona, y esa limitación se declara en el
