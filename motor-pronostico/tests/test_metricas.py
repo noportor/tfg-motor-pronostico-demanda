@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from src import metricas
 from src.metricas import matriz_de_errores, metricas_por_serie, resumen, tabla8
 
 
@@ -144,6 +145,71 @@ def test_matriz_de_errores_solo_deja_bloques_completos():
     matriz = matriz_de_errores({"m1": tabla, "m2": tabla}, metrica="mape")
     # La serie B no tiene MAPE (toda en cero) y por tanto no forma bloque completo.
     assert list(matriz.index) == ["A"]
+
+
+def test_suite_valorizada_con_numeros_a_mano():
+    """Dos series de unidades DISTINTAS: solo el dinero las puede sumar."""
+    indice = pd.period_range("2025-04", periods=2, freq="M")
+    # CHICA vende 10/mes (unidad cara: costo 100) · GRANDE 1000/mes (costo 0,5)
+    real = pd.DataFrame({"CHICA": [10.0, 10.0], "GRANDE": [1000.0, 1000.0]}, index=indice)
+    pred = pd.DataFrame({"CHICA": [12.0, 12.0], "GRANDE": [900.0, 900.0]}, index=indice)
+    escala = pd.Series({"CHICA": 1.0, "GRANDE": 1.0})
+    errores = {"m": metricas.metricas_por_serie(real, pred, escala)}
+    costos = pd.Series({"CHICA": 100.0, "GRANDE": 0.5})
+
+    suite = metricas.suite_valorizada(errores, costos)
+    fila = suite.iloc[0]
+
+    # demanda = 100·10·2 + 0,5·1000·2 = 3.000 Bs
+    # error   = 100·2·2  + 0,5·100·2 =   500 Bs  -> WMAPE 16,667 %
+    # pred    = 100·12·2 + 0,5·900·2 = 3.300 Bs  -> Bias +10 %
+    assert fila["demanda_valorizada"] == pytest.approx(3000.0)
+    assert fila["error_valorizado"] == pytest.approx(500.0)
+    assert fila["wmape_val"] == pytest.approx(100 * 500 / 3000)
+    assert fila["bias_val"] == pytest.approx(10.0)
+    assert fila["D"] == pytest.approx(100 * 500 / 3000 + 10.0)
+
+
+def test_la_serie_sin_costo_se_excluye_y_la_cobertura_lo_declara():
+    indice = pd.period_range("2025-04", periods=2, freq="M")
+    real = pd.DataFrame({"A": [10.0, 10.0], "B": [5.0, 5.0]}, index=indice)
+    pred = pd.DataFrame({"A": [8.0, 8.0], "B": [9.0, 9.0]}, index=indice)
+    errores = {"m": metricas.metricas_por_serie(real, pred, pd.Series({"A": 1.0, "B": 1.0}))}
+
+    suite = metricas.suite_valorizada(errores, pd.Series({"A": 2.0}))  # B sin costo
+    fila = suite.iloc[0]
+    assert fila["series_con_costo"] == 1
+    assert fila["cobertura_series"] == pytest.approx(0.5)
+    # Solo A: demanda 2·10·2=40, error 2·2·2=8
+    assert fila["wmape_val"] == pytest.approx(100 * 8 / 40)
+
+
+def test_dentro_de_una_serie_el_ranking_es_invariante_a_la_valorizacion():
+    """La base de la consistencia: el costo es una constante positiva de la
+    serie, así que el orden entre modelos POR SERIE no cambia al valorizar —
+    el motor puede elegir en unidades y la decisión leerse en Bs."""
+    indice = pd.period_range("2025-04", periods=3, freq="M")
+    real = pd.DataFrame({"A": [100.0, 120.0, 80.0]}, index=indice)
+    escala = pd.Series({"A": 10.0})
+    pred_bueno = pd.DataFrame({"A": [95.0, 118.0, 84.0]}, index=indice)
+    pred_malo = pd.DataFrame({"A": [140.0, 90.0, 130.0]}, index=indice)
+
+    e_bueno = metricas.metricas_por_serie(real, pred_bueno, escala)
+    e_malo = metricas.metricas_por_serie(real, pred_malo, escala)
+    compuesto_bueno = e_bueno["error_compuesto_unidades"].item()
+    compuesto_malo = e_malo["error_compuesto_unidades"].item()
+    assert compuesto_bueno < compuesto_malo
+
+    for costo in (0.01, 1.0, 500.0):
+        assert compuesto_bueno * costo < compuesto_malo * costo
+
+
+def test_sin_maestro_la_suite_falla_explicitamente():
+    indice = pd.period_range("2025-04", periods=2, freq="M")
+    real = pd.DataFrame({"A": [10.0, 10.0]}, index=indice)
+    errores = {"m": metricas.metricas_por_serie(real, real, pd.Series({"A": 1.0}))}
+    with pytest.raises(ValueError):
+        metricas.suite_valorizada(errores, pd.Series(dtype=float))
 
 
 def test_tabla8_tiene_las_columnas_del_documento():

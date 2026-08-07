@@ -33,6 +33,14 @@ origen:
     regional: "regional"
     cantidad: "unidades_vendidas"
 
+  # Opcional. Costo unitario del SKU en su combinación (constante por serie en
+  # la fuente). Si se declara, la extracción escribe además
+  # `datos/crudo/costos.csv` (serie -> costo_unitario, seudonimizado con el
+  # mismo mapa que las ventas). Es lo que habilita el ERROR VALORIZADO: las
+  # unidades difieren entre SKUs y la única agregación con sentido físico entre
+  # productos es en dinero (WMAE ponderado por costo).
+  columna_costo: null
+
   # Opcional. Columna adicional cuyo total se reporta por tramo de años antes de
   # extraer, como control de integridad.
   #

@@ -133,9 +133,16 @@ def cargar_origen(ruta: Path = RUTA_ORIGEN) -> dict:
             f"origen.columna_de_control = '{control}' no es un identificador válido."
         )
 
+    costo = origen.get("columna_costo")
+    if costo is not None and not PATRON_IDENTIFICADOR.match(str(costo)):
+        raise ErrorDeExtraccion(
+            f"origen.columna_costo = '{costo}' no es un identificador válido."
+        )
+
     return {
         "tabla": tabla,
         "columnas": {rol: str(columnas[rol]) for rol in ROLES},
+        "columna_costo": str(costo) if costo else None,
         "columna_de_control": str(control) if control else None,
         "anio_de_corte_del_control": int(origen.get("anio_de_corte_del_control", 2020)),
     }
@@ -148,13 +155,22 @@ def construir_consultas(origen: dict) -> tuple[str, str]:
     control = origen["columna_de_control"]
     corte = origen["anio_de_corte_del_control"]
 
+    # El costo unitario viaja en la misma consulta (es constante por serie en
+    # la fuente; se toma el primer valor no nulo). Habilita el error
+    # VALORIZADO: entre SKUs las unidades difieren y la única agregación con
+    # sentido físico es en dinero.
+    columna_costo = (
+        f"t.{origen['columna_costo']}" if origen["columna_costo"] else "NULL"
+    )
+
     consulta = f"""
 SELECT
     (t.{c['anio']} * 100 + t.{c['mes']}) AS periodo,
     t.{c['sku']}                          AS sku,
     t.{c['canal']}                        AS canal,
     t.{c['regional']}                     AS regional,
-    t.{c['cantidad']}                     AS cantidad
+    t.{c['cantidad']}                     AS cantidad,
+    {columna_costo}                       AS costo
 FROM {tabla} AS t
 WHERE (t.{c['anio']} * 100 + t.{c['mes']}) BETWEEN %(desde)s AND %(hasta)s
   AND t.{c['cantidad']} IS NOT NULL
@@ -293,6 +309,7 @@ def main() -> int:
         # Cursor del lado del servidor: la consulta devuelve cientos de miles de
         # filas y no tiene sentido materializarlas todas en memoria.
         seudonimos: dict[str, str] = {}
+        costos: dict[tuple[str, str, str], float] = {}
         filas_escritas = 0
         negativas = 0
         suma = 0.0
@@ -308,7 +325,7 @@ def main() -> int:
                                       lineterminator="\n")
                 escritor.writerow(["fecha", "sku", "canal", "regional", "cantidad"])
 
-                for periodo, sku, canal, regional, cantidad in cur:
+                for periodo, sku, canal, regional, cantidad, costo in cur:
                     if not args.sin_seudonimizar:
                         if sku not in seudonimos:
                             seudonimos[sku] = f"SKU-{len(seudonimos) + 1:04d}"
@@ -325,6 +342,11 @@ def main() -> int:
                         # diferencias de redondeo entre corridas.
                         f"{float(cantidad):.6f}".rstrip("0").rstrip("."),
                     ])
+                    # Costo: constante por serie en la fuente; se toma el primer
+                    # valor no nulo y positivo.
+                    clave = (sku_salida, str(canal), str(regional))
+                    if costo is not None and float(costo) > 0 and clave not in costos:
+                        costos[clave] = float(costo)
                     filas_escritas += 1
                     suma += float(cantidad)
                     if float(cantidad) < 0:
@@ -339,6 +361,22 @@ def main() -> int:
             "La consulta no devolvió ninguna fila. No se escribe un archivo vacío: "
             "revisá el período y la tabla de origen."
         )
+
+    # Maestro de costos unitarios por serie: junto al snapshot, nunca se
+    # versiona (el costo es información sensible de la empresa). Habilita las
+    # métricas VALORIZADAS, la única agregación con sentido físico entre SKUs.
+    ruta_costos = None
+    if origen["columna_costo"] and costos:
+        ruta_costos = destino.parent / "costos.csv"
+        with ruta_costos.open("w", encoding="utf-8", newline="") as fh:
+            escritor = csv.writer(fh, lineterminator="\n")
+            escritor.writerow(["sku", "canal", "regional", "costo_unitario"])
+            for (sku_s, canal_s, regional_s), valor in sorted(costos.items()):
+                escritor.writerow([
+                    sku_s, canal_s, regional_s,
+                    f"{valor:.6f}".rstrip("0").rstrip("."),
+                ])
+        print(f"Costos unitarios -> {ruta_costos} ({len(costos):,} series con costo)")
 
     # Tabla de correspondencia: se guarda aparte y nunca se versiona.
     if seudonimos:
@@ -368,6 +406,8 @@ def main() -> int:
         "filas_negativas": negativas,
         "suma_cantidad": round(suma, 6),
         "skus_distintos": len(seudonimos) if seudonimos else None,
+        "series_con_costo": len(costos) if origen["columna_costo"] else None,
+        "sha256_costos": _sha256(ruta_costos) if ruta_costos else None,
         "seudonimizado": not args.sin_seudonimizar,
         "controles_origen": {
             k: (float(v) if isinstance(v, (int, float)) and v is not None else v)
