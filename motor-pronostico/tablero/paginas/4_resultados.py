@@ -3,6 +3,12 @@
 Regla de la página: TODO número mostrado sale de un archivo de la corrida
 (`resumen_metricas.csv`, `errores_por_serie.csv`, manifiesto). El tablero
 reagrega para visualizar, nunca calcula resultados nuevos.
+
+Fluidez: las secciones con controles son ``st.fragment`` — cambiar la métrica
+re-ejecuta SOLO esa sección, no la página entera. Y al navegador viajan
+agregados (once filas, percentiles), nunca las miles de filas por serie: además
+de lento, ese volumen pasa por la capa nativa de serialización, que es donde el
+proceso puede morir sin dejar traceback.
 """
 
 import altair as alt
@@ -27,6 +33,14 @@ if resumen is None or resumen.empty:
 indexado = resumen.set_index("modelo")
 motor_notas = (manifiesto.get("resultados") or {}).get("motor") or {}
 acierto = motor_notas.get("acierto") or {}
+
+METRICAS = {
+    "MAE (unidades)": ("mae", ",.1f"),
+    "MAPE (%)": ("mape", ",.1f"),
+    "RMSE (unidades)": ("rmse", ",.1f"),
+    "MASE": ("mase", ",.3f"),
+    "Bias (%)": ("bias", "+,.1f"),
+}
 
 # --- KPIs --------------------------------------------------------------------
 benchmark = benchmarks["promedio_movil"]
@@ -61,52 +75,55 @@ c4.metric(
 
 st.divider()
 
-# --- Comparación por métrica -------------------------------------------------
-st.markdown("**Comparación por métrica**")
-seleccion_izq, seleccion_der, _ = st.columns([1, 1, 2])
-METRICAS = {
-    "MAE (unidades)": ("mae", ",.1f"),
-    "MAPE (%)": ("mape", ",.1f"),
-    "RMSE (unidades)": ("rmse", ",.1f"),
-    "MASE": ("mase", ",.3f"),
-    "Bias (%)": ("bias", "+,.1f"),
-}
-metrica_titulo = seleccion_izq.selectbox("Métrica", list(METRICAS))
-agregado = seleccion_der.selectbox("Resumen", ["mediana", "media"])
-metrica, formato = METRICAS[metrica_titulo]
-columna = f"{metrica}_{agregado}"
 
-grafico = estilo.barras_por_modelo(
-    resumen[["modelo", columna]].rename(columns={columna: "valor"}),
-    "valor",
-    f"{metrica_titulo} — {agregado}",
-    benchmarks=benchmarks,
-    formato=formato,
-)
-st.altair_chart(estilo.aplicar(grafico), use_container_width=True)
-if metrica == "mape":
-    excluido = resumen["pct_excluido_del_mape_medio"].iloc[0]
-    st.caption(
-        f"El MAPE excluye los meses con demanda real cero "
-        f"(~{excluido:.0f} % de las observaciones); con muchos ceros, leer MASE."
+# --- Comparación por métrica (fragmento: el clic solo re-ejecuta esto) -------
+@st.fragment
+def comparacion_por_metrica() -> None:
+    st.markdown("**Comparación por métrica**")
+    izquierda, derecha, _ = st.columns([1, 1, 2])
+    metrica_titulo = izquierda.selectbox("Métrica", list(METRICAS))
+    agregado = derecha.selectbox("Resumen", ["mediana", "media"])
+    metrica, formato = METRICAS[metrica_titulo]
+    columna = f"{metrica}_{agregado}"
+
+    grafico = estilo.barras_por_modelo(
+        resumen[["modelo", columna]].rename(columns={columna: "valor"}),
+        "valor",
+        f"{metrica_titulo} — {agregado}",
+        benchmarks=benchmarks,
+        formato=formato,
     )
+    st.altair_chart(estilo.aplicar(grafico), use_container_width=True)
+    if metrica == "mape":
+        excluido = resumen["pct_excluido_del_mape_medio"].iloc[0]
+        st.caption(
+            f"El MAPE excluye los meses con demanda real cero "
+            f"(~{excluido:.0f} % de las observaciones); con muchos ceros, leer MASE."
+        )
+
+
+comparacion_por_metrica()
 
 # --- Tabla 8 -----------------------------------------------------------------
 st.markdown("**Tabla 8 — como va al documento**")
 if tabla8 is not None:
-    st.dataframe(
-        tabla8.style.format(precision=2, thousands=","),
-        use_container_width=True, hide_index=True,
-    )
+    # Redondeo simple, sin Styler: el Styler pasa por otra ruta de
+    # serialización nativa y no aporta nada que un round no dé.
+    st.dataframe(tabla8.round(2), use_container_width=True, hide_index=True)
 
 st.divider()
 
-# --- Explorador por serie ----------------------------------------------------
-st.markdown("**Distribución del error por serie** — lo que el promedio esconde")
-errores = corrida.tabla("errores_por_serie.csv")
-if errores is not None:
+
+# --- Explorador por serie (fragmento) ----------------------------------------
+@st.fragment
+def explorador_por_serie() -> None:
+    st.markdown("**Distribución del error por serie** — lo que el promedio esconde")
+    errores = corrida.tabla("errores_por_serie.csv")
+    if errores is None:
+        return
+
     fila = st.columns([1, 1, 2])
-    metrica_explorar = fila[0].selectbox(
+    metrica = fila[0].selectbox(
         "Métrica por serie", ["mae", "mape", "rmse", "mase", "bias"]
     )
     modelos_disponibles = sorted(errores["modelo"].unique())
@@ -115,42 +132,59 @@ if errores is not None:
     elegidos = fila[1].multiselect(
         "Modelos", modelos_disponibles, default=protagonistas
     )
-    if elegidos:
-        seleccion = errores.loc[
-            errores["modelo"].isin(elegidos), ["modelo", metrica_explorar]
-        ].dropna()
-        # Percentiles y no histograma: con colas de miles de unidades el
-        # histograma se vuelve una sola barra; la tabla de percentiles es la
-        # lectura honesta. (Reagregación para visualizar, no un resultado nuevo.)
-        percentiles = (
-            seleccion.groupby("modelo")[metrica_explorar]
-            .quantile([0.10, 0.25, 0.50, 0.75, 0.90])
-            .unstack()
-        )
-        percentiles.columns = [f"p{int(100 * c)}" for c in percentiles.columns]
-        st.dataframe(
-            percentiles.round(2).reset_index(), use_container_width=True, hide_index=True
-        )
+    if not elegidos:
+        return
 
-        recorte = seleccion[metrica_explorar].quantile(0.95)
-        visibles = seleccion.loc[seleccion[metrica_explorar] <= recorte]
-        grafico = (
-            alt.Chart(estilo.con_rol(visibles, benchmarks=benchmarks))
-            .mark_boxplot(size=22, color=estilo.ACENTO, outliers={"size": 8})
-            .encode(
-                y=alt.Y("modelo:N", title=None),
-                x=alt.X(f"{metrica_explorar}:Q", title=metrica_explorar.upper()),
-                color=estilo.color_por_rol(leyenda=False),
-            )
-            .properties(height=32 * len(elegidos) + 40)
-        )
-        st.altair_chart(estilo.aplicar(grafico), use_container_width=True)
-        st.caption(
-            f"Eje recortado al percentil 95 conjunto "
-            f"({numero(recorte)}): quedan fuera "
-            f"{int((seleccion[metrica_explorar] > recorte).sum()):,} series. "
-            "La identidad la da la etiqueta del eje; el color marca el rol."
-        )
+    seleccion = errores.loc[
+        errores["modelo"].isin(elegidos), ["modelo", metrica]
+    ].dropna()
+
+    # Percentiles precalculados AQUÍ: al navegador viaja una fila por modelo,
+    # no las miles de series. (Reagregación para visualizar, no un resultado
+    # nuevo: el detalle está en errores_por_serie.csv.)
+    percentiles = (
+        seleccion.groupby("modelo")[metrica]
+        .quantile([0.10, 0.25, 0.50, 0.75, 0.90])
+        .unstack()
+    )
+    percentiles.columns = ["p10", "p25", "p50", "p75", "p90"]
+    percentiles = percentiles.reset_index()
+
+    st.dataframe(percentiles.round(2), use_container_width=True, hide_index=True)
+
+    datos = estilo.con_rol(percentiles, benchmarks=benchmarks)
+    base = alt.Chart(datos).encode(
+        y=alt.Y("modelo:N", title=None,
+                sort=alt.EncodingSortField("p50", order="ascending")),
+    )
+    # Diagrama de rango medio: línea fina p10–p90, banda p25–p75, marca en la
+    # mediana. Misma lectura que un boxplot, con once filas de datos.
+    rango = base.mark_rule(strokeWidth=2, color=estilo.EJE).encode(
+        x=alt.X("p10:Q", title=metrica.upper()), x2="p90:Q",
+    )
+    banda = base.mark_bar(height={"band": 0.45}, cornerRadius=3).encode(
+        x="p25:Q", x2="p75:Q", color=estilo.color_por_rol(),
+        tooltip=["modelo:N"] + [
+            alt.Tooltip(f"{p}:Q", format=",.2f")
+            for p in ("p10", "p25", "p50", "p75", "p90")
+        ],
+    )
+    mediana = base.mark_tick(thickness=2.5, size=22, color=estilo.TINTA).encode(
+        x="p50:Q"
+    )
+    st.altair_chart(
+        estilo.aplicar((rango + banda + mediana).properties(
+            height=30 * len(percentiles) + 40
+        )),
+        use_container_width=True,
+    )
+    st.caption(
+        "Línea: p10–p90 · banda: p25–p75 · marca: mediana. "
+        "La identidad la da la etiqueta del eje; el color marca el rol."
+    )
+
+
+explorador_por_serie()
 
 st.divider()
 
