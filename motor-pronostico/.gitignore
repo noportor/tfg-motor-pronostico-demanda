@@ -45,3 +45,7 @@ token*
 *.key
 *_secret*
 credentials*
+
+# Visor (SPA): dependencias y build no se versionan.
+visor/node_modules/
+visor/dist/
