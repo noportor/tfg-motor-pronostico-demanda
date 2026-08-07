@@ -62,8 +62,8 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
         if intermitente:
             valores = valores * (generador.random(meses) < 0.45)
 
-        canal = ("X", "Z")[i % 2]
-        regional = ("SANTA CRUZ", "LA PAZ", "COCHABAMBA")[i % 3]
+        canal = ("CANAL-1", "CANAL-2")[i % 2]
+        regional = ("REGIONAL-A", "REGIONAL-B", "REGIONAL-C")[i % 3]
         for fecha, valor in zip(fechas, valores):
             if valor <= 0:
                 continue  # solo se registran los meses CON venta

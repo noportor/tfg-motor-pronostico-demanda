@@ -69,9 +69,17 @@ docker compose build
 
 ### 1 · Congelar el snapshot de datos (una sola vez)
 
+El esquema del sistema de origen —nombres de base, esquema, tabla y columnas— no
+está en el repositorio: es información de la empresa, cubierta por el mismo
+acuerdo de confidencialidad que los datos. Se declara en un archivo local que no
+se versiona.
+
 ```bash
-export TFG_DB_HOST=host.docker.internal TFG_DB_PORT=15432
-export TFG_DB_NAME=bixdb TFG_DB_USER=... TFG_DB_PASSWORD=...
+cp config/extraccion.ejemplo.yaml config/extraccion.local.yaml
+# completar config/extraccion.local.yaml con el esquema real
+
+export TFG_DB_HOST=... TFG_DB_PORT=... 
+export TFG_DB_NAME=... TFG_DB_USER=... TFG_DB_PASSWORD=...
 docker compose run --rm tfg python scripts/extraer_snapshot.py
 ```
 
@@ -152,10 +160,25 @@ Todo va a `salidas/`. Cada archivo alimenta un punto concreto del documento:
 ## Confidencialidad
 
 El histórico de NOVAPACK está cubierto por un acuerdo de confidencialidad
-(Anexo B de la tesis). `datos/crudo/` está en `.gitignore` desde el primer
-commit. Antes de compartir el repositorio, revisar que no haya datos ni
-fragmentos con códigos reales en notebooks, salidas versionadas o mensajes de
-commit.
+(Anexo B de la tesis), y con él el esquema interno del sistema de origen. Este
+repositorio se publica: el Anexo G enlaza el código.
+
+Tres barreras, en orden de fiabilidad decreciente:
+
+1. **`.gitignore`** — `datos/crudo/`, `salidas*/` y `config/extraccion.local.yaml`
+   nunca se versionan.
+2. **Seudonimización** — los códigos de producto se reemplazan al extraer, porque
+   `errores_por_serie.csv` se adjunta como anexo. La correspondencia queda fuera
+   del repositorio.
+3. **Control automático** — `tests/test_confidencialidad.py` revisa **los
+   archivos que git rastrea** buscando nombres de la empresa, de bases, de
+   esquemas, direcciones IP, credenciales y etiquetas reales de regional. Falla
+   la suite si encuentra algo. Revisar esto a mano antes de cada publicación no
+   funciona: basta un descuido una vez.
+
+Si el control marca un falso positivo, se agrega a `EXCEPCIONES` **con el motivo
+escrito**. Una excepción sin justificación es una excepción que dentro de seis
+meses nadie recuerda por qué está.
 
 ---
 

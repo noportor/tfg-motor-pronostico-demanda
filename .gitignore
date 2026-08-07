@@ -31,3 +31,7 @@ venv/
 
 # Notebooks: la salida ejecutada puede contener SKU reales.
 notebooks/.ipynb_checkpoints/
+
+# El esquema interno del sistema de origen (nombres de base, esquema, tabla y
+# columnas) esta cubierto por el mismo acuerdo de confidencialidad que los datos.
+config/extraccion.local.yaml

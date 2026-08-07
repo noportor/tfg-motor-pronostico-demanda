@@ -14,10 +14,17 @@ snapshot fecha el corte y lo vuelve verificable: cualquiera que reciba el
 archivo puede recalcular el hash y comprobar que es el mismo que produjo los
 números del documento.
 
+Dónde vive el esquema de origen
+-------------------------------
+En ``config/extraccion.local.yaml``, que NO se versiona. Este archivo no
+contiene ningún nombre de esquema, tabla ni columna de la empresa: el código de
+la tesis se publica y el esquema interno está cubierto por el acuerdo de
+confidencialidad igual que los datos. Ver ``config/extraccion.ejemplo.yaml``.
+
 Qué se extrae
 -------------
-Registros de venta efectiva mensual por SKU, canal y regional, para las nueve
-gestiones fiscales completas 2018–2026 (abril-2017 a marzo-2026).
+Registros de venta mensual por SKU, canal y regional, para el período declarado
+en ``config/config.yaml``.
 
 Se extraen SOLO los meses con venta distinta de cero. Los meses en cero
 intermedios los reconstruye ``src/series.py`` a partir de la primera y la última
@@ -43,6 +50,8 @@ permutar con una semilla secreta.
 
 Uso
 ---
+    cp config/extraccion.ejemplo.yaml config/extraccion.local.yaml
+    # completar config/extraccion.local.yaml con el esquema real
     export TFG_DB_HOST=... TFG_DB_PORT=... TFG_DB_NAME=...
     export TFG_DB_USER=... TFG_DB_PASSWORD=...
     python scripts/extraer_snapshot.py [--sin-seudonimizar]
@@ -55,57 +64,128 @@ import csv
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 from src.config import cargar_config, gestion_de, mes_a_periodo  # noqa: E402
 
-TABLA_ORIGEN = "hub_thales.thales_demanda_consolidada"
+RUTA_ORIGEN = RAIZ / "config" / "extraccion.local.yaml"
+RUTA_PLANTILLA = RAIZ / "config" / "extraccion.ejemplo.yaml"
 
-# La columna objetivo es `ventas_efectivas` y no `demanda_total`.
-#
-# Justificación (se declara en la memoria): `demanda_total` = ventas efectivas +
-# venta perdida registrada. La venta perdida NO se registró antes de 2020 — es
-# cero en todos los meses de 2017, 2018 y 2019 — de modo que `demanda_total`
-# cambia de definición a mitad de la serie. Entrenar y evaluar sobre una variable
-# con un quiebre estructural en el medio contamina la comparación entre modelos.
-# `ventas_efectivas` es homogénea en las nueve gestiones y es además lo que el
-# documento declara como fuente: «datos históricos de ventas».
-COLUMNA_OBJETIVO = "ventas_efectivas"
+ROLES = ("anio", "mes", "sku", "canal", "regional", "cantidad")
 
-CONSULTA = f"""
+# Identificadores SQL admitidos. La configuración la escribe el propio autor, no
+# un tercero, pero un nombre de tabla se interpola en la consulta y no se puede
+# parametrizar como un valor: validarlo cuesta una línea y cierra la puerta.
+PATRON_IDENTIFICADOR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+
+
+class ErrorDeExtraccion(Exception):
+    """La configuración de la extracción es inválida o falta."""
+
+
+def cargar_origen(ruta: Path = RUTA_ORIGEN) -> dict:
+    """Lee y valida ``config/extraccion.local.yaml``."""
+    if not ruta.exists():
+        raise ErrorDeExtraccion(
+            f"Falta {ruta.relative_to(RAIZ)}.\n"
+            f"Copiá la plantilla y completala con el esquema real:\n"
+            f"    cp {RUTA_PLANTILLA.relative_to(RAIZ)} {ruta.relative_to(RAIZ)}\n"
+            f"Ese archivo no se versiona: el esquema interno de la empresa está "
+            f"cubierto por el acuerdo de confidencialidad igual que los datos."
+        )
+
+    contenido = yaml.safe_load(ruta.read_text(encoding="utf-8")) or {}
+    origen = contenido.get("origen")
+    if not isinstance(origen, dict):
+        raise ErrorDeExtraccion(f"{ruta.name} no tiene una sección 'origen'.")
+
+    tabla = str(origen.get("tabla", "")).strip()
+    if not PATRON_IDENTIFICADOR.match(tabla):
+        raise ErrorDeExtraccion(
+            f"origen.tabla = '{tabla}' no es un identificador SQL válido "
+            f"(esquema.tabla, solo letras, dígitos y guion bajo)."
+        )
+
+    columnas = origen.get("columnas") or {}
+    faltantes = [rol for rol in ROLES if rol not in columnas]
+    if faltantes:
+        raise ErrorDeExtraccion(
+            f"Faltan columnas en origen.columnas: {faltantes}. "
+            f"Declaradas: {sorted(columnas)}"
+        )
+    for rol, nombre in columnas.items():
+        if not PATRON_IDENTIFICADOR.match(str(nombre)):
+            raise ErrorDeExtraccion(
+                f"origen.columnas.{rol} = '{nombre}' no es un identificador válido."
+            )
+
+    control = origen.get("columna_de_control")
+    if control is not None and not PATRON_IDENTIFICADOR.match(str(control)):
+        raise ErrorDeExtraccion(
+            f"origen.columna_de_control = '{control}' no es un identificador válido."
+        )
+
+    return {
+        "tabla": tabla,
+        "columnas": {rol: str(columnas[rol]) for rol in ROLES},
+        "columna_de_control": str(control) if control else None,
+        "anio_de_corte_del_control": int(origen.get("anio_de_corte_del_control", 2020)),
+    }
+
+
+def construir_consultas(origen: dict) -> tuple[str, str]:
+    """Arma la consulta de extracción y la de controles previos."""
+    c = origen["columnas"]
+    tabla = origen["tabla"]
+    control = origen["columna_de_control"]
+    corte = origen["anio_de_corte_del_control"]
+
+    consulta = f"""
 SELECT
-    (t.year * 100 + t.month)      AS periodo,
-    t.sku                         AS sku,
-    t.fv                          AS canal,
-    t.dc                          AS regional,
-    t.{COLUMNA_OBJETIVO}          AS cantidad
-FROM {TABLA_ORIGEN} AS t
-WHERE (t.year * 100 + t.month) BETWEEN %(desde)s AND %(hasta)s
-  AND t.{COLUMNA_OBJETIVO} IS NOT NULL
-  AND t.{COLUMNA_OBJETIVO} <> 0
-ORDER BY t.sku, t.dc, t.fv, t.year, t.month
+    (t.{c['anio']} * 100 + t.{c['mes']}) AS periodo,
+    t.{c['sku']}                          AS sku,
+    t.{c['canal']}                        AS canal,
+    t.{c['regional']}                     AS regional,
+    t.{c['cantidad']}                     AS cantidad
+FROM {tabla} AS t
+WHERE (t.{c['anio']} * 100 + t.{c['mes']}) BETWEEN %(desde)s AND %(hasta)s
+  AND t.{c['cantidad']} IS NOT NULL
+  AND t.{c['cantidad']} <> 0
+ORDER BY t.{c['sku']}, t.{c['regional']}, t.{c['canal']}, t.{c['anio']}, t.{c['mes']}
 """
 
-CONSULTA_CONTROL = f"""
-SELECT
-    COUNT(*)                                                        AS filas_rejilla,
-    COUNT(*) FILTER (WHERE t.{COLUMNA_OBJETIVO} <> 0)               AS filas_con_venta,
-    COUNT(*) FILTER (WHERE t.{COLUMNA_OBJETIVO} <  0)               AS filas_negativas,
-    COUNT(*) FILTER (WHERE t.{COLUMNA_OBJETIVO} IS NULL)            AS filas_nulas,
-    COUNT(DISTINCT t.sku)                                           AS skus,
-    COUNT(DISTINCT t.dc)                                            AS regionales,
-    COUNT(DISTINCT t.fv)                                            AS canales,
-    COUNT(DISTINCT (t.sku || '|' || t.dc || '|' || t.fv))           AS combinaciones,
-    SUM(t.ventas_perdidas) FILTER (WHERE t.year < 2020)             AS perdidas_antes_2020,
-    SUM(t.ventas_perdidas) FILTER (WHERE t.year >= 2020)            AS perdidas_desde_2020
-FROM {TABLA_ORIGEN} AS t
-WHERE (t.year * 100 + t.month) BETWEEN %(desde)s AND %(hasta)s
-"""
+    lineas_control = [
+        "COUNT(*)                                                   AS filas_totales",
+        f"COUNT(*) FILTER (WHERE t.{c['cantidad']} <> 0)             AS filas_con_venta",
+        f"COUNT(*) FILTER (WHERE t.{c['cantidad']} <  0)             AS filas_negativas",
+        f"COUNT(*) FILTER (WHERE t.{c['cantidad']} IS NULL)          AS filas_nulas",
+        f"COUNT(DISTINCT t.{c['sku']})                               AS skus",
+        f"COUNT(DISTINCT t.{c['regional']})                          AS regionales",
+        f"COUNT(DISTINCT t.{c['canal']})                             AS canales",
+        f"COUNT(DISTINCT (t.{c['sku']} || '|' || t.{c['regional']} || '|' || t.{c['canal']}))"
+        "                                                            AS combinaciones",
+    ]
+    if control:
+        lineas_control += [
+            f"SUM(t.{control}) FILTER (WHERE t.{c['anio']} <  {corte})"
+            f"                                                        AS control_antes",
+            f"SUM(t.{control}) FILTER (WHERE t.{c['anio']} >= {corte})"
+            f"                                                        AS control_desde",
+        ]
+
+    consulta_control = (
+        "SELECT\n    " + ",\n    ".join(lineas_control) + f"\nFROM {tabla} AS t\n"
+        f"WHERE (t.{c['anio']} * 100 + t.{c['mes']}) BETWEEN %(desde)s AND %(hasta)s"
+    )
+    return consulta, consulta_control
 
 
 def _periodo_entero(texto: str) -> int:
@@ -164,36 +244,51 @@ def main() -> int:
              "archivo resultante no puede adjuntarse al documento académico.",
     )
     parser.add_argument("--config", default=None, help="Ruta a config.yaml")
+    parser.add_argument("--origen", default=None, help="Ruta a extraccion.local.yaml")
     args = parser.parse_args()
 
     cfg = cargar_config(args.config)
+    origen = cargar_origen(Path(args.origen) if args.origen else RUTA_ORIGEN)
+    consulta, consulta_control = construir_consultas(origen)
+
     desde = _periodo_entero(str(cfg.crudo["periodo"]["inicio"]))
     hasta = _periodo_entero(str(cfg.crudo["periodo"]["fin"]))
 
     destino = cfg.ruta_datos
     destino.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Origen  : {TABLA_ORIGEN}  (columna objetivo: {COLUMNA_OBJETIVO})")
+    print(f"Origen  : declarado en {RUTA_ORIGEN.name} (fuera del repositorio)")
     print(f"Período : {desde} .. {hasta}")
     print(f"Destino : {destino}")
 
     conexion = _conexion()
     try:
         with conexion.cursor() as cur:
-            cur.execute(CONSULTA_CONTROL, {"desde": desde, "hasta": hasta})
+            cur.execute(consulta_control, {"desde": desde, "hasta": hasta})
             columnas_control = [c[0] for c in cur.description]
             control = dict(zip(columnas_control, cur.fetchone()))
 
         print("\nControles sobre el origen (antes de filtrar):")
         for clave, valor in control.items():
-            print(f"  {clave:<24} {valor}")
+            print(f"  {clave:<20} {valor}")
 
-        if control["filas_negativas"]:
+        if control.get("filas_negativas"):
             print(
-                f"\n  AVISO: {control['filas_negativas']} filas con "
-                f"{COLUMNA_OBJETIVO} negativa (devoluciones). Se extraen tal cual; "
-                f"el tratamiento lo decide series.devoluciones en config.yaml."
+                f"\n  AVISO: {control['filas_negativas']} filas con cantidad negativa "
+                f"(devoluciones). Se extraen tal cual; el tratamiento lo decide "
+                f"series.devoluciones en config.yaml."
             )
+
+        antes, desde_corte = control.get("control_antes"), control.get("control_desde")
+        if antes is not None and desde_corte is not None:
+            corte = origen["anio_de_corte_del_control"]
+            if not antes and desde_corte:
+                print(
+                    f"\n  CONTROL DE INTEGRIDAD: la columna de control es 0 antes de "
+                    f"{corte} y {desde_corte:,.0f} desde {corte}. Confirma que esa "
+                    f"medida CAMBIA de definición a mitad del período y que no puede "
+                    f"usarse como variable objetivo."
+                )
 
         # Cursor del lado del servidor: la consulta devuelve cientos de miles de
         # filas y no tiene sentido materializarlas todas en memoria.
@@ -206,7 +301,7 @@ def main() -> int:
 
         with conexion.cursor(name="tfg_snapshot") as cur:
             cur.itersize = 50_000
-            cur.execute(CONSULTA, {"desde": desde, "hasta": hasta})
+            cur.execute(consulta, {"desde": desde, "hasta": hasta})
 
             with destino.open("w", encoding="utf-8", newline="") as fh:
                 escritor = csv.writer(fh, delimiter=cfg.datos.separador,
@@ -258,9 +353,9 @@ def main() -> int:
     digest = _sha256(destino)
     manifiesto = {
         "extraido_en": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "origen": TABLA_ORIGEN,
-        "columna_objetivo": COLUMNA_OBJETIVO,
-        "base_de_datos": os.environ.get("TFG_DB_NAME"),
+        # El nombre de la tabla y el de la base NO se registran aquí: este
+        # archivo vive junto al snapshot, que puede compartirse. Lo que hace
+        # verificable la extracción es el hash, no el origen.
         "periodo_solicitado": {"desde": desde, "hasta": hasta},
         "periodo_observado": {"desde": periodo_min, "hasta": periodo_max},
         "gestiones": {
@@ -274,8 +369,10 @@ def main() -> int:
         "suma_cantidad": round(suma, 6),
         "skus_distintos": len(seudonimos) if seudonimos else None,
         "seudonimizado": not args.sin_seudonimizar,
-        "controles_origen": {k: (float(v) if isinstance(v, (int, float)) and v is not None else v)
-                             for k, v in control.items()},
+        "controles_origen": {
+            k: (float(v) if isinstance(v, (int, float)) and v is not None else v)
+            for k, v in control.items()
+        },
         "archivo": str(destino.relative_to(RAIZ)),
         "sha256": digest,
     }

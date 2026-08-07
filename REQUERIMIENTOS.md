@@ -305,7 +305,9 @@ motor-pronostico-novapack/
 ├── .gitignore                  # datos/crudo/ NUNCA se versiona
 ├── main.py                     # CLI: inspeccionar | ejecutar
 ├── config/
-│   └── config.yaml
+│   ├── config.yaml
+│   ├── extraccion.ejemplo.yaml # plantilla del esquema de origen
+│   └── extraccion.local.yaml   # el esquema REAL — NUNCA se versiona
 ├── datos/
 │   ├── crudo/                  # inmutable
 │   └── procesado/
@@ -346,9 +348,19 @@ Tres desviaciones respecto del boceto inicial, todas deliberadas:
 
 **Sobre los datos y el control de versiones.** El histórico de NOVAPACK está
 cubierto por un acuerdo de confidencialidad (Anexo B de la tesis). `datos/crudo/`
-va en `.gitignore` desde el primer commit. Si el repositorio llegara a ser
-público o compartido, revisar que no haya datos ni fragmentos con SKU reales en
-notebooks, salidas versionadas o mensajes de commit.
+va en `.gitignore` desde el primer commit.
+
+El repositorio **se publica**: el Anexo G enlaza el código. Eso extiende la
+obligación más allá de los datos, al esquema interno del sistema de origen
+—nombres de base, de esquema, de tabla y de columnas—, que por eso vive en
+`config/extraccion.local.yaml`, fuera del control de versiones.
+
+«Revisar antes de publicar» no es un control: basta un descuido una vez. La
+revisión está automatizada en `tests/test_confidencialidad.py`, que inspecciona
+**los archivos que git rastrea** —exactamente los que se publicarían— buscando
+identificadores de la empresa, credenciales, direcciones y etiquetas reales de
+regional, y hace fallar la suite si encuentra algo. Los falsos positivos se
+declaran uno por uno con su motivo escrito.
 
 ---
 

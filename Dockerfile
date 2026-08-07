@@ -54,6 +54,18 @@ RUN pip install --no-deps --dry-run -r requirements.txt > /dev/null \
  && pip check \
  && python -c "import pandas, numpy, scipy, sklearn, matplotlib, lightgbm, scikit_posthocs, yaml, openpyxl; print('dependencias OK')"
 
+# git NO influye en ningún número, pero hacen falta dos cosas suyas:
+#   - el manifiesto registra el commit y si el árbol tenía cambios sin commitear
+#     al ejecutar (RN-6); sin git solo puede saber lo primero;
+#   - el control de confidencialidad necesita saber qué archivos rastrea git,
+#     porque son exactamente los que se publicarían.
+# Va DESPUÉS de las capas de pip a propósito: ponerlo arriba invalidaría la
+# caché de todas ellas ante cualquier cambio.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && git config --global --add safe.directory /app
+
 COPY . .
 
 CMD ["python", "main.py", "--help"]

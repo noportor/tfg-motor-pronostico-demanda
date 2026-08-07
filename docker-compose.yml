@@ -30,7 +30,7 @@ services:
       # escriben en este archivo ni en el repositorio.
       TFG_DB_HOST: "${TFG_DB_HOST:-host.docker.internal}"
       TFG_DB_PORT: "${TFG_DB_PORT:-15432}"
-      TFG_DB_NAME: "${TFG_DB_NAME:-bixdb}"
+      TFG_DB_NAME: "${TFG_DB_NAME:-}"
       TFG_DB_USER: "${TFG_DB_USER:-}"
       TFG_DB_PASSWORD: "${TFG_DB_PASSWORD:-}"
     extra_hosts:

@@ -1,0 +1,49 @@
+# =============================================================================
+# Origen del snapshot — PLANTILLA
+#
+# Copiá este archivo a `config/extraccion.local.yaml` y completalo con los
+# nombres reales de tu base. Ese archivo está en `.gitignore` y NUNCA se
+# versiona.
+#
+# Por qué vive fuera del repositorio
+# ----------------------------------
+# El código de esta tesis se publica; el esquema interno de NOVAPACK S.A. no.
+# Los nombres de esquema, tabla y columnas del sistema de origen son
+# información de la empresa cubierta por el acuerdo de confidencialidad
+# (Anexo B), igual que los datos. Tenerlos hardcodeados en `extraer_snapshot.py`
+# obligaría a elegir entre publicar el código o proteger el esquema.
+#
+# La contrapartida es que quien reciba el repositorio no puede reproducir la
+# extracción sin acceso a la base, cosa que de todos modos no podría: el
+# snapshot congelado es el punto de partida verificable, y su SHA-256 está en el
+# manifiesto de cada corrida.
+# =============================================================================
+
+origen:
+  # Tabla o vista con la venta mensual agregada por SKU, canal y regional.
+  tabla: "esquema.tabla_de_ventas_mensuales"
+
+  # Nombres REALES de las columnas en esa tabla. La izquierda es el rol que
+  # cumple cada una en el análisis; la derecha, cómo se llama en tu base.
+  columnas:
+    anio: "anio"
+    mes: "mes"
+    sku: "codigo_producto"
+    canal: "canal"
+    regional: "regional"
+    cantidad: "unidades_vendidas"
+
+  # Opcional. Columna adicional cuyo total se reporta por tramo de años antes de
+  # extraer, como control de integridad.
+  #
+  # En este trabajo sirvió para una verificación concreta: confirmar que la
+  # variable objetivo tiene la MISMA definición en todo el período. Si el origen
+  # ofrece una medida de demanda que suma la venta perdida, y esa venta perdida
+  # no se registró en los primeros años, entonces esa medida cambia de
+  # significado a mitad de la serie y no puede usarse como objetivo. El control
+  # lo detecta antes de extraer, no después de haber escrito los números.
+  columna_de_control: null
+
+  # Año a partir del cual se espera que `columna_de_control` deje de ser cero.
+  # Solo se usa para presentar el control en dos tramos.
+  anio_de_corte_del_control: 2020
