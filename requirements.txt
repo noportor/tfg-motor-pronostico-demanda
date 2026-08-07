@@ -1,0 +1,19 @@
+# Versiones fijadas (RN-5 — reproducibilidad).
+#
+# Un cambio de versión de LightGBM puede alterar los resultados. Si ocurre
+# después de haber escrito los números en la tesis, hay que volver a ejecutar
+# todo y actualizar el documento.
+#
+# El manifiesto.json de cada corrida registra las versiones efectivamente
+# cargadas en tiempo de ejecución, no estas.
+
+pandas==3.0.2
+numpy==2.4.4
+scipy==1.17.1
+scikit-learn==1.8.0
+matplotlib==3.10.8
+lightgbm==4.7.0
+scikit-posthocs==0.14.0
+openpyxl==3.1.5
+PyYAML==6.0.2
+pytest==8.3.4

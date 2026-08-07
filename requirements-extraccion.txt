@@ -1,0 +1,8 @@
+# Dependencia EXCLUSIVA del script de extracción (scripts/extraer_snapshot.py).
+#
+# Se mantiene fuera de requirements.txt a propósito: §9 de los requerimientos
+# exige que el pipeline no tenga dependencias de red en tiempo de ejecución.
+# La extracción es un paso previo y manual que se ejecuta UNA vez y congela el
+# snapshot; el pipeline nunca habla con la base de datos.
+
+psycopg2-binary==2.9.10
