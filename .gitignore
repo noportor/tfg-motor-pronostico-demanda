@@ -1,0 +1,33 @@
+# =============================================================================
+# El histórico de NOVAPACK está cubierto por un acuerdo de confidencialidad
+# (Anexo B de la tesis). datos/crudo/ NUNCA se versiona.
+# =============================================================================
+datos/crudo/*
+!datos/crudo/.gitkeep
+datos/procesado/*
+!datos/procesado/.gitkeep
+
+# Credenciales de la extracción. Nunca al repositorio.
+.env
+config/env.local
+
+# Salidas: se regeneran corriendo el pipeline. Se versiona solo el manifiesto
+# si se quiere dejar constancia de una corrida concreta.
+#
+# El patrón cubre TODOS los directorios de salida, no solo `salidas/`: las
+# ablaciones escriben en `salidas_<nombre>/` y esas carpetas contienen
+# `errores_por_serie.csv`, con una fila por serie del portafolio.
+salidas/*
+!salidas/.gitkeep
+salidas_*/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Notebooks: la salida ejecutada puede contener SKU reales.
+notebooks/.ipynb_checkpoints/

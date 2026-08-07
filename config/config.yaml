@@ -1,0 +1,202 @@
+# =============================================================================
+# Motor de pronóstico de demanda — NOVAPACK S.A.
+# Configuración única del experimento. Todo lo que sigue se fija ANTES de mirar
+# resultados (§10 del REQUERIMIENTOS: «Ajustar parámetros mirando el conjunto de
+# prueba» está prohibido).
+#
+# Cada valor aquí es una decisión metodológica que se declara en la memoria.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Datos de entrada
+# -----------------------------------------------------------------------------
+datos:
+  # Ruta del archivo crudo. Se resuelve relativa a la raíz del repositorio.
+  # datos/crudo/ está en .gitignore desde el primer commit (Anexo B — acuerdo de
+  # confidencialidad).
+  archivo: "datos/crudo/ventas_novapack.csv"
+
+  # Mapeo de nombres reales de columna -> nombres canónicos del programa.
+  # RF-1: los nombres NO se asumen, se declaran.
+  columnas:
+    fecha: "fecha"
+    sku: "sku"
+    canal: "canal"
+    regional: "regional"
+    cantidad: "cantidad"
+
+  # Separador y codificación del CSV (se ignoran si el archivo es .xlsx).
+  separador: ","
+  codificacion: "utf-8"
+
+# -----------------------------------------------------------------------------
+# 2. Ventana temporal — gestiones fiscales de NOVAPACK (abril → marzo)
+# -----------------------------------------------------------------------------
+# La empresa cierra en marzo. Una gestión se nombra por el año en que CIERRA:
+# la gestión 2018 va de abril-2017 a marzo-2018.
+#
+# Se usan las 9 gestiones completas disponibles: 2018 … 2026.
+# La gestión 2026 (abr-2025 → mar-2026) es la última CERRADA al momento del
+# análisis, y es el bloque de prueba.
+periodo:
+  mes_inicio_gestion: 4          # abril
+  inicio: "2017-04"              # inicio de la gestión 2018
+  fin: "2026-03"                 # cierre de la gestión 2026
+
+# -----------------------------------------------------------------------------
+# 3. Partición en tres bloques (RN-2)
+# -----------------------------------------------------------------------------
+# Los cortes caen en frontera de gestión fiscal, no en frontera de año
+# calendario: así cada bloque es un número entero de ciclos comerciales
+# completos y ningún bloque parte una campaña escolar por la mitad.
+#
+#   entrenamiento  gestiones 2018–2024   abr-2017 … mar-2024   84 meses
+#   validación     gestión   2025        abr-2024 … mar-2025   12 meses
+#   prueba         gestión   2026        abr-2025 … mar-2026   12 meses
+#
+# La selección por serie que hace el motor SOLO puede mirar validación.
+particion:
+  fin_entrenamiento: "2024-03"   # último mes incluido en entrenamiento
+  fin_validacion: "2025-03"      # último mes incluido en validación
+  # el resto (hasta periodo.fin) es prueba
+
+# -----------------------------------------------------------------------------
+# 4. Construcción de las series (RF-3)
+# -----------------------------------------------------------------------------
+series:
+  # Tratamiento de cantidades negativas (devoluciones).
+  #   descartar : se eliminan las filas negativas y se reporta cuántas eran
+  #   netear    : se suman algebraicamente contra la venta del mismo mes
+  devoluciones: "descartar"
+
+  # Los meses sin registro se completan con cero SOLO entre la primera y la
+  # última venta de cada serie. Un mes anterior al lanzamiento del producto no
+  # es demanda cero: es ausencia de producto.
+  rellenar_ceros_intermedios: true
+
+# -----------------------------------------------------------------------------
+# 5. Criterios de inclusión y exclusión
+# -----------------------------------------------------------------------------
+# Se miden SOBRE EL BLOQUE DE ENTRENAMIENTO exclusivamente. Medirlos sobre la
+# historia completa filtraría series usando información de validación y prueba,
+# que es la forma más silenciosa de contaminar la muestra.
+#
+# El desglose «cuántas series excluyó cada criterio» va literalmente al apartado
+# «Criterios de inclusión y exclusión» de la tesis, y el N resultante es el
+# tamaño de la muestra.
+inclusion:
+  historial_minimo_meses: 36     # meses entre primera y última venta, en train
+  proporcion_maxima_ceros: 0.70  # sobre la vida observada de la serie, en train
+  volumen_minimo_unidades: 50    # acumulado en train
+
+# -----------------------------------------------------------------------------
+# 6. Modelos
+# -----------------------------------------------------------------------------
+# Los seis primeros son los métodos que NOVAPACK usa hoy (confirmado con
+# Planificación). Los tres siguientes son los clásicos estadísticos incorporados
+# por recomendación de la dirección del trabajo. LightGBM es el brazo de
+# aprendizaje automático y el motor es la propuesta.
+modelos:
+  activos:
+    - naive_m1          # método actual — línea base estándar
+    - naive_m1_gf
+    - ma_2              # método actual — promedio móvil bimestral
+    - ma_2_gf
+    - ma_12             # método actual — promedio móvil anual
+    - ma_12_gf
+    - exp_smooth_opt    # clásico — suavizado exponencial simple, alfa optimizado
+    - holt_winters      # clásico — nivel + tendencia + estacionalidad (m=12)
+    - croston           # clásico — demanda intermitente
+    - lightgbm          # aprendizaje automático
+    - motor             # la propuesta: selección por serie
+
+  # Brazo que representa al «promedio móvil que usa la empresa» en el contraste
+  # confirmatorio de la hipótesis. Se fija ANTES de ver resultados (RF-8).
+  benchmark_promedio_movil: "ma_12"
+  benchmark_naive: "naive_m1"
+
+  # Suavizado exponencial simple: rejilla de alfa explorada sobre entrenamiento.
+  exp_smooth:
+    alfa_min: 0.05
+    alfa_max: 0.95
+    alfa_paso: 0.05
+
+  # Holt-Winters aditivo con estacionalidad mensual.
+  # La rejilla es 6 × 4 × 4 = 96 combinaciones. Cada combinación se evalúa sobre
+  # TODAS las series a la vez (recursión vectorizada), y cada serie se queda con
+  # la combinación de menor SSE en entrenamiento.
+  holt_winters:
+    periodo_estacional: 12
+    alfa_rejilla: [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+    beta_rejilla: [0.0, 0.05, 0.1, 0.2]
+    gamma_rejilla: [0.0, 0.05, 0.1, 0.2]
+
+  # Croston clásico (Croston, 1972).
+  croston:
+    alfa_rejilla: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+
+  # LightGBM — modelo global sobre todas las series.
+  # Objetivo regression_l1, coherente con que la métrica principal es el MAE.
+  lightgbm:
+    objective: "regression_l1"
+    metric: "l1"
+    learning_rate: 0.05
+    num_leaves: 63
+    min_data_in_leaf: 40
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 1
+    lambda_l2: 1.0
+    num_boost_round: 3000
+    early_stopping_rounds: 100
+    # Reproducibilidad exacta (RN-5): un solo hilo y modo determinista.
+    seed: 20260406
+    num_threads: 1
+    deterministic: true
+    force_row_wise: true
+    verbosity: -1
+
+  # Regla de selección del motor. Se decide mirando SOLO validación (RN-2).
+  #   mae             : argmin del MAE en validación
+  #   mae_mas_bias    : argmin de MAE + |Bias| (regla nativa del motor en producción)
+  motor_regla: "mae"
+
+# -----------------------------------------------------------------------------
+# 7. Features (RF-5)
+# -----------------------------------------------------------------------------
+features:
+  rezagos: [1, 2, 3, 6, 12]
+  ventanas_moviles: [3, 6, 12]   # media y desviación sobre valores desplazados
+  incluir_mes: true
+  incluir_anio: true
+  incluir_tendencia: true
+  categoricas: ["sku", "canal", "regional"]
+
+# -----------------------------------------------------------------------------
+# 8. Pruebas estadísticas (RF-8)
+# -----------------------------------------------------------------------------
+pruebas:
+  alfa: 0.05
+  # Wilcoxon unilateral: la hipótesis alternativa es que el modelo propuesto
+  # tiene MENOS error que el de referencia.
+  alternativa: "less"
+  # Métrica sobre la que se hacen los contrastes pareados por serie.
+  metrica_contraste: "mae"
+  # Shapiro-Wilk pierde sentido y satura por encima de este N; se submuestrea
+  # con semilla fija y se declara en el informe.
+  shapiro_n_maximo: 5000
+  semilla: 20260406
+
+# -----------------------------------------------------------------------------
+# 9. Figuras (RF-9)
+# -----------------------------------------------------------------------------
+figuras:
+  dpi: 300
+  escala_grises: true
+  formato: "png"
+
+# -----------------------------------------------------------------------------
+# 10. Salidas
+# -----------------------------------------------------------------------------
+salidas:
+  directorio: "salidas"

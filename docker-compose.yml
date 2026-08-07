@@ -1,0 +1,35 @@
+# Ejecución del experimento.
+#
+#   docker compose build
+#   docker compose run --rm tfg python -m pytest -q
+#   docker compose run --rm tfg python scripts/extraer_snapshot.py
+#   docker compose run --rm tfg python main.py inspeccionar
+#   docker compose run --rm tfg python main.py ejecutar
+#
+# Los directorios de datos y salidas se montan como volumen para que el
+# snapshot congelado y los resultados persistan fuera del contenedor.
+
+services:
+  tfg:
+    build: .
+    image: motor-pronostico-novapack
+    working_dir: /app
+    volumes:
+      - ./datos:/app/datos
+      - ./salidas:/app/salidas
+      - ./config:/app/config
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+      - ./main.py:/app/main.py
+    environment:
+      # Credenciales de la extracción. Se leen del entorno del host; nunca se
+      # escriben en este archivo ni en el repositorio.
+      TFG_DB_HOST: "${TFG_DB_HOST:-host.docker.internal}"
+      TFG_DB_PORT: "${TFG_DB_PORT:-15432}"
+      TFG_DB_NAME: "${TFG_DB_NAME:-bixdb}"
+      TFG_DB_USER: "${TFG_DB_USER:-}"
+      TFG_DB_PASSWORD: "${TFG_DB_PASSWORD:-}"
+    extra_hosts:
+      # El túnel SSH a la base vive en el host, no en la red de Docker.
+      - "host.docker.internal:host-gateway"
