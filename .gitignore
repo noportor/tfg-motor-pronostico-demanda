@@ -1,37 +1,36 @@
 # =============================================================================
-# El histórico de NOVAPACK está cubierto por un acuerdo de confidencialidad
-# (Anexo B de la tesis). datos/crudo/ NUNCA se versiona.
+# Reglas de TODO el repositorio de la tesis.
+# El proyecto de análisis tiene además su propio .gitignore en
+# motor-pronostico-novapack/, con las reglas de datos y salidas.
 # =============================================================================
-datos/crudo/*
-!datos/crudo/.gitkeep
-datos/procesado/*
-!datos/procesado/.gitkeep
 
-# Credenciales de la extracción. Nunca al repositorio.
+# --- Credenciales -----------------------------------------------------------
+# Un token en el historial de git hay que darlo por quemado aunque se borre
+# después: queda en los objetos del repositorio. Estas reglas están para que
+# nunca llegue a entrar.
+token*
+*.token
+*.pem
+*.key
+*_secret*
+credentials*
 .env
-config/env.local
+.env.*
 
-# Salidas: se regeneran corriendo el pipeline. Se versiona solo el manifiesto
-# si se quiere dejar constancia de una corrida concreta.
-#
-# El patrón cubre TODOS los directorios de salida, no solo `salidas/`: las
-# ablaciones escriben en `salidas_<nombre>/` y esas carpetas contienen
-# `errores_por_serie.csv`, con una fila por serie del portafolio.
-salidas/*
-!salidas/.gitkeep
-salidas_*/
+# --- Documentos: archivos temporales de Office ------------------------------
+~$*
+*.tmp
 
-# Python
+# --- Sistema operativo y editores -------------------------------------------
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+
+# --- Python -----------------------------------------------------------------
 __pycache__/
 *.py[cod]
-*.egg-info/
 .pytest_cache/
 .venv/
 venv/
-
-# Notebooks: la salida ejecutada puede contener SKU reales.
-notebooks/.ipynb_checkpoints/
-
-# El esquema interno del sistema de origen (nombres de base, esquema, tabla y
-# columnas) esta cubierto por el mismo acuerdo de confidencialidad que los datos.
-config/extraccion.local.yaml

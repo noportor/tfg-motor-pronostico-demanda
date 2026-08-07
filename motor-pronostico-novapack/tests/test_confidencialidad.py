@@ -25,7 +25,28 @@ from pathlib import Path
 
 import pytest
 
-RAIZ = Path(__file__).resolve().parent.parent
+PROYECTO = Path(__file__).resolve().parent.parent
+
+
+def _raiz_del_repositorio() -> Path:
+    """El repositorio de la tesis, que contiene este proyecto y el documento.
+
+    El control tiene que mirar TODO lo versionado, no solo la carpeta del
+    código: el documento, los anexos y cualquier archivo que alguien deje en la
+    raíz se publican igual.
+    """
+    for candidato in [PROYECTO, *PROYECTO.parents]:
+        if (candidato / ".git").exists():
+            return candidato
+    return PROYECTO
+
+
+RAIZ = _raiz_del_repositorio()
+# Prefijo de la carpeta del proyecto dentro del repositorio, para escribir las
+# excepciones sin atarlas al nombre de la carpeta.
+SUBCARPETA = (
+    f"{PROYECTO.relative_to(RAIZ).as_posix()}/" if PROYECTO != RAIZ else ""
+)
 
 # Cada entrada es (nombre legible, expresión regular).
 PATRONES_PROHIBIDOS: list[tuple[str, str]] = [
@@ -39,32 +60,47 @@ PATRONES_PROHIBIDOS: list[tuple[str, str]] = [
     ("usuario de base de datos", r"(?i)\bnicolas_oporto\b|\bpapelera_ro\b|\bmadepa_bi\b"),
     ("regional real", r"(?i)\bSANTA\s+CRUZ\b|\bCOCHABAMBA\b|\bLA\s+PAZ\b|\bTARIJA\b"),
     ("credencial embebida", r"(?i)(password|contrase[nñ]a|secret|token)\s*[:=]\s*[\"'][^\"'{$]{6,}"),
+    # Un token suelto en un archivo no tiene la forma `token: "..."`, así que el
+    # patrón de arriba no lo ve. Estos buscan la CREDENCIAL en sí, esté donde
+    # esté. Se agregaron después de que un token clásico de GitHub terminara
+    # commiteado en la raíz del repositorio.
+    ("token de GitHub", r"\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    ("clave de acceso AWS", r"\b(AKIA|ASIA)[0-9A-Z]{16}\b"),
+    ("clave privada", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    ("cadena de conexión con contraseña", r"(?i)\b\w+://[^\s:@/]+:[^\s:@/]+@"),
 ]
 
+# Archivos que por su NOMBRE parecen guardar una credencial. Ninguno de estos
+# debería estar versionado jamás, tenga dentro lo que tenga.
+NOMBRES_SOSPECHOSOS = re.compile(
+    r"(?i)(^|/)(token[^/]*|[^/]*\.(token|pem|key|p12|pfx)|[^/]*_secret[^/]*"
+    r"|credentials?[^/]*|\.env(\..*)?)$"
+)
+
 # Falsos positivos justificados. Clave: (archivo, patrón) -> motivo.
+# Este archivo contiene todos los términos por definición: es la lista.
+_YO = f"{SUBCARPETA}tests/test_confidencialidad.py"
 EXCEPCIONES: dict[tuple[str, str], str] = {
-    ("tests/test_confidencialidad.py", "nombre real de la empresa"):
-        "Este archivo ES la lista de patrones; contiene los términos por definición.",
-    ("tests/test_confidencialidad.py", "nombre del grupo empresarial"): "Ídem.",
-    ("tests/test_confidencialidad.py", "nombre del sistema de pronóstico interno"): "Ídem.",
-    ("tests/test_confidencialidad.py", "nombre de la base de datos corporativa"): "Ídem.",
-    ("tests/test_confidencialidad.py", "esquema interno"): "Ídem.",
-    ("tests/test_confidencialidad.py", "dirección IP"): "Ídem.",
-    ("tests/test_confidencialidad.py", "dominio corporativo"): "Ídem.",
-    ("tests/test_confidencialidad.py", "usuario de base de datos"): "Ídem.",
-    ("tests/test_confidencialidad.py", "regional real"): "Ídem.",
-    ("tests/test_confidencialidad.py", "credencial embebida"): "Ídem.",
-    ("REQUERIMIENTOS.md", "regional real"):
-        "La delimitación espacial del estudio es pública: la tesis declara "
-        "Santa Cruz de la Sierra en su portada.",
+    (_YO, nombre): "Este archivo ES la lista de patrones; los contiene por definición."
+    for nombre, _ in PATRONES_PROHIBIDOS
 }
 
-# Rutas versionadas que no se revisan.
-EXTENSIONES_BINARIAS = {".png", ".pdf", ".xlsx", ".ico", ".jpg", ".jpeg"}
+# Rutas versionadas que no se revisan. Los documentos ofimáticos son binarios
+# comprimidos: el control NO los inspecciona, y esa limitación se declara en el
+# README. Lo que entre en `documento/` hay que revisarlo a ojo.
+EXTENSIONES_BINARIAS = {
+    ".png", ".pdf", ".xlsx", ".ico", ".jpg", ".jpeg",
+    ".docx", ".doc", ".pptx", ".ppt", ".odt", ".zip",
+}
 
 
 def _archivos_versionados() -> list[Path]:
-    """Lo que git realmente rastrea. Es lo único que se publicaría."""
+    """Lo que git realmente rastrea EN TODO EL REPOSITORIO.
+
+    Es lo único que se publicaría, y por eso se consulta desde la raíz del
+    repositorio y no desde la carpeta del proyecto: el documento y los anexos
+    viven fuera de ella.
+    """
     salida = subprocess.run(
         ["git", "-C", str(RAIZ), "ls-files"],
         capture_output=True, text=True, timeout=30,
@@ -110,12 +146,31 @@ def test_ningun_identificador_interno_en_archivos_versionados(hallazgos):
         )
 
 
+def test_ningun_archivo_versionado_parece_una_credencial():
+    """Por el NOMBRE, antes de mirar el contenido.
+
+    Se agregó después de que un `token.txt` con un token clásico de GitHub
+    terminara commiteado en la raíz del repositorio: el control de contenido de
+    entonces buscaba `token: "..."` como asignación y no veía un archivo suelto.
+    """
+    sospechosos = [
+        p.relative_to(RAIZ).as_posix()
+        for p in _archivos_versionados()
+        if NOMBRES_SOSPECHOSOS.search(p.relative_to(RAIZ).as_posix())
+    ]
+    assert not sospechosos, (
+        f"Hay archivos versionados cuyo nombre indica que guardan una credencial: "
+        f"{sospechosos}. Sacalos del repositorio Y considerá la credencial quemada: "
+        f"queda en los objetos de git aunque se borre el archivo."
+    )
+
+
 def test_no_se_versiona_ningun_archivo_de_datos():
     """`datos/crudo/` NUNCA se versiona (Anexo B)."""
     versionados = [p.relative_to(RAIZ).as_posix() for p in _archivos_versionados()]
     filtrados = [
         v for v in versionados
-        if (v.startswith("datos/") or v.startswith("salidas"))
+        if (v.startswith(f"{SUBCARPETA}datos/") or v.startswith(f"{SUBCARPETA}salidas"))
         and not v.endswith(".gitkeep")
     ]
     assert not filtrados, (
@@ -126,11 +181,11 @@ def test_no_se_versiona_ningun_archivo_de_datos():
 def test_no_se_versiona_la_configuracion_de_extraccion():
     """El esquema de origen vive fuera del repositorio."""
     versionados = [p.relative_to(RAIZ).as_posix() for p in _archivos_versionados()]
-    assert "config/extraccion.local.yaml" not in versionados, (
+    assert f"{SUBCARPETA}config/extraccion.local.yaml" not in versionados, (
         "config/extraccion.local.yaml contiene el esquema interno y no puede "
         "versionarse. Está en .gitignore: si aparece aquí es porque se forzó "
         "con `git add -f`."
     )
-    assert "config/extraccion.ejemplo.yaml" in versionados, (
+    assert f"{SUBCARPETA}config/extraccion.ejemplo.yaml" in versionados, (
         "Falta la plantilla: sin ella nadie puede reproducir la extracción."
     )
