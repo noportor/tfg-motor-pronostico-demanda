@@ -52,59 +52,442 @@ TRAMAS = ["", "///", "...", "\\\\\\", "xxx", "+++", "ooo", "***", "|||", "---", 
 MARCADORES = ["o", "s", "^", "D", "v", "P", "X", "*", "<", ">", "h"]
 
 
-def figura2_error_compuesto(
-    resumen: pd.DataFrame,
-    destino: Path,
-    dpi: int = 300,
-    columna: str = "error_compuesto_pct_media",
-    columna_mediana: str = "error_compuesto_pct_mediana",
-    etiqueta: str = "Error compuesto (MAPE + |Bias|), %",
-) -> Path:
-    """Figura 2 — Error compuesto promedio por modelo.
-
-    Se dibujan **media y mediana** una junto a otra a propósito. Unas pocas
-    series de gran volumen pueden dominar el promedio; si las dos barras
-    discrepan mucho, la figura lo enseña en lugar de esconderlo.
-    """
-    _estilo(dpi)
-    datos = resumen.sort_values(columna).reset_index(drop=True)
-
-    n = len(datos)
-    posiciones = np.arange(n)
-    ancho = 0.38
-
-    alto = max(3.2, 0.42 * n + 1.6)
-    figura, eje = plt.subplots(figsize=(7.0, alto))
-
-    eje.barh(
-        posiciones + ancho / 2, datos[columna], height=ancho,
-        color="0.35", edgecolor="black", linewidth=0.6, label="Media",
-    )
-    eje.barh(
-        posiciones - ancho / 2, datos[columna_mediana], height=ancho,
-        color="0.80", edgecolor="black", linewidth=0.6, hatch="///", label="Mediana",
-    )
-
-    for i, fila in datos.iterrows():
-        eje.text(fila[columna], i + ancho / 2, f"  {fila[columna]:,.1f}",
-                 va="center", ha="left", fontsize=8)
-        eje.text(fila[columna_mediana], i - ancho / 2, f"  {fila[columna_mediana]:,.1f}",
-                 va="center", ha="left", fontsize=8, color="0.35")
-
-    eje.set_yticks(posiciones)
-    eje.set_yticklabels(datos["modelo"])
-    eje.set_xlabel(etiqueta)
-    eje.set_title("Figura 2. Error compuesto por modelo\n"
-                  "(bloque de prueba; menor es mejor)", loc="left", fontsize=10)
-    eje.legend(frameon=False, loc="lower right")
-    eje.grid(axis="y", visible=False)
-    eje.set_xlim(left=0)
-    eje.margins(x=0.16)
-
+def _guardar(figura, destino: Path) -> Path:
     destino.parent.mkdir(parents=True, exist_ok=True)
     figura.savefig(destino)
     plt.close(figura)
     return destino
+
+
+def figura_perfil_categorias(
+    valor_mensual: pd.DataFrame,
+    estacionales: tuple[str, ...],
+    destino: Path,
+    dpi: int = 300,
+) -> Path:
+    """F1 — Perfil mensual del valor por categoría (solo entrenamiento).
+
+    El trabajo de esta figura: justificar la población objetivo mostrando los
+    dos regímenes del negocio — recurrentes casi planas contra estacionales de
+    campaña. Las estacionales van en trazos oscuros con marcador; las
+    recurrentes, en grises. La línea de reparto uniforme (100/12) es la vara.
+
+    Args:
+        valor_mensual: columnas ``categoria``, ``mes`` (1..12) y ``pct``
+            (participación del mes en el valor anual de SU categoría).
+    """
+    _estilo(dpi)
+    figura, eje = plt.subplots(figsize=(7.0, 4.2))
+
+    estilos_estacionales = [
+        dict(color="black", linestyle="-", marker="o", markersize=4, linewidth=1.8),
+        dict(color="0.25", linestyle="--", marker="s", markersize=4, linewidth=1.6),
+    ]
+    estilos_recurrentes = [
+        dict(color="0.45", linestyle="-.", marker="^", markersize=3.5, linewidth=1.2),
+        dict(color="0.55", linestyle=":", marker="D", markersize=3.5, linewidth=1.2),
+        dict(color="0.65", linestyle="-", marker="v", markersize=3.5, linewidth=1.0),
+    ]
+
+    i_est = i_rec = 0
+    for categoria in sorted(valor_mensual["categoria"].unique()):
+        datos = valor_mensual.loc[valor_mensual["categoria"] == categoria]
+        datos = datos.sort_values("mes")
+        if categoria in estacionales:
+            estilo = estilos_estacionales[i_est % len(estilos_estacionales)]
+            i_est += 1
+        else:
+            estilo = estilos_recurrentes[i_rec % len(estilos_recurrentes)]
+            i_rec += 1
+        eje.plot(datos["mes"], datos["pct"], label=categoria, **estilo)
+
+    eje.axhline(100 / 12, color="0.7", linewidth=0.8, linestyle="--")
+    eje.text(12.15, 100 / 12, "8,3 %\n(uniforme)", fontsize=7, va="center",
+             color="0.45")
+    eje.set_xticks(range(1, 13))
+    eje.set_xlabel("Mes calendario")
+    eje.set_ylabel("Participación en el valor anual de la categoría (%)")
+    eje.set_title(
+        "Figura 1. Los dos regímenes de la población objetivo\n"
+        "(participación mensual del valor; bloque de entrenamiento)",
+        loc="left", fontsize=10,
+    )
+    eje.legend(frameon=False, fontsize=8)
+    eje.set_xlim(0.6, 13.4)
+    return _guardar(figura, destino)
+
+
+def figura_volumen_gestiones(
+    valor_por_gestion: pd.DataFrame,
+    gestiones_evento: tuple[int, ...],
+    gestion_validacion: int,
+    gestion_prueba: int,
+    destino: Path,
+    dpi: int = 300,
+) -> Path:
+    """F2 — Valor por gestión fiscal, con el contexto marcado.
+
+    Valorizado a propósito: sumar unidades entre SKUs no tiene sentido físico
+    (la regla de todo el estudio). El confinamiento va con trama; validación y
+    prueba, en tonos distintos — el lector ve de un vistazo que el año de
+    validación es atípico y que nada de eso se ocultó.
+    """
+    _estilo(dpi)
+    figura, eje = plt.subplots(figsize=(7.0, 3.8))
+
+    datos = valor_por_gestion.sort_values("gestion").reset_index(drop=True)
+    for i, fila in datos.iterrows():
+        gestion = int(fila["gestion"])
+        color, trama = "0.55", ""
+        if gestion in gestiones_evento:
+            color, trama = "0.80", "///"
+        if gestion == gestion_validacion:
+            color = "0.35"
+        if gestion == gestion_prueba:
+            color = "black"
+        eje.bar(i, fila["valor_mm"], color=color, hatch=trama,
+                edgecolor="black", linewidth=0.6, width=0.66)
+
+    eje.set_xticks(range(len(datos)))
+    eje.set_xticklabels([f"g{int(g)}" for g in datos["gestion"]])
+    eje.set_ylabel("Demanda valorizada (millones de Bs)")
+    eje.set_title(
+        "Figura 2. Demanda valorizada por gestión fiscal\n"
+        "(población objetivo; trama = confinamiento; gris oscuro = validación; "
+        "negro = prueba)",
+        loc="left", fontsize=10,
+    )
+    eje.grid(axis="x", visible=False)
+    return _guardar(figura, destino)
+
+
+def figura_unidad_analisis(
+    tabla_sku: pd.DataFrame, destino: Path, dpi: int = 300
+) -> Path:
+    """F3 — La independencia dentro del SKU, en dos paneles.
+
+    Izquierda: en cuántas combinaciones canal-regional vive cada SKU (la barra
+    de los single-combo va atenuada: para ellos la pregunta no existe).
+    Derecha: correlación mediana entre las combinaciones del mismo SKU — la
+    masa a la izquierda de 0,5 es el argumento.
+    """
+    _estilo(dpi)
+    figura, (izq, der) = plt.subplots(1, 2, figsize=(7.0, 3.2))
+
+    conteo = tabla_sku["n_combos"].clip(upper=10).value_counts().sort_index()
+    colores = ["0.85" if k == 1 else "0.45" for k in conteo.index]
+    izq.bar(range(len(conteo)), conteo.to_numpy(), color=colores,
+            edgecolor="black", linewidth=0.6)
+    izq.set_xticks(range(len(conteo)))
+    izq.set_xticklabels([("10+" if k == 10 else str(int(k))) for k in conteo.index])
+    izq.set_xlabel("Combinaciones canal-regional")
+    izq.set_ylabel("SKUs")
+    izq.set_title("¿En cuántas combinaciones\nvive cada SKU?", fontsize=9)
+
+    correlaciones = tabla_sku["correlacion_mediana"].dropna()
+    der.hist(correlaciones, bins=np.arange(-1.0, 1.01, 0.2), color="0.45",
+             edgecolor="black", linewidth=0.6)
+    der.axvline(0.5, color="black", linewidth=0.9, linestyle="--")
+    der.text(0.52, der.get_ylim()[1] * 0.92,
+             f"{100 * (correlaciones < 0.5).mean():.0f} % < 0,5",
+             fontsize=8)
+    der.set_xlabel("Correlación mediana intra-SKU (niveles)")
+    der.set_ylabel("SKUs")
+    der.set_title("¿Se mueven juntas las\ncombinaciones de un SKU?", fontsize=9)
+
+    figura.suptitle(
+        "Figura 3. La unidad de análisis: independencia dentro del SKU "
+        "(entrenamiento, sin la ventana del evento)",
+        fontsize=10, x=0.01, ha="left",
+    )
+    figura.tight_layout()
+    return _guardar(figura, destino)
+
+
+def figura_muestra_sensibilidad(
+    tabla_flujo: pd.DataFrame,
+    sensibilidad: pd.DataFrame,
+    umbrales: dict,
+    destino: Path,
+    dpi: int = 300,
+) -> Path:
+    """F4 — La muestra: cascada de exclusiones + sensibilidad del umbral clave.
+
+    Izquierda: cada criterio y cuántas series dejó (el N no aparece de la
+    nada). Derecha: cómo se moverían N y cobertura valorizada si el umbral de
+    ceros —el único con margen real— fuera otro; el punto marca la decisión.
+    """
+    _estilo(dpi)
+    figura, (izq, der) = plt.subplots(
+        1, 2, figsize=(7.6, 3.4), gridspec_kw={"width_ratios": [1.25, 1]}
+    )
+
+    pasos = tabla_flujo.reset_index(drop=True)
+    posiciones = np.arange(len(pasos))[::-1]
+    izq.barh(posiciones, pasos["series"], color="0.55",
+             edgecolor="black", linewidth=0.6, height=0.62)
+    for pos, (_, fila) in zip(posiciones, pasos.iterrows()):
+        etiqueta = f"{fila['series']:,}"
+        if fila["excluidas"]:
+            etiqueta += f"  (−{fila['excluidas']:,})"
+        izq.text(fila["series"], pos, "  " + etiqueta, va="center", fontsize=7.5)
+    izq.set_yticks(posiciones)
+    izq.set_yticklabels(
+        [str(p).split(". ", 1)[-1] for p in pasos["paso"]], fontsize=7.5
+    )
+    izq.set_xlabel("Series")
+    izq.set_title("La cascada de la muestra", fontsize=9)
+    izq.grid(axis="y", visible=False)
+    izq.margins(x=0.28)
+
+    base_hist = umbrales["historial_minimo_meses"]
+    base_vol = umbrales["volumen_minimo_unidades"]
+    base_ceros = umbrales["proporcion_maxima_ceros"]
+    corte = sensibilidad.loc[
+        (sensibilidad["historial_minimo_meses"] == base_hist)
+        & (sensibilidad["volumen_minimo_unidades"] == base_vol)
+    ].sort_values("proporcion_maxima_ceros")
+
+    der.plot(corte["proporcion_maxima_ceros"], corte["n_series"],
+             color="black", marker="o", markersize=4, linewidth=1.4,
+             label="N de la muestra")
+    der.set_xlabel("Umbral de proporción de ceros")
+    der.set_ylabel("Series")
+    if "pct_demanda_train_valorizada" in corte.columns:
+        der2 = der.twinx()
+        der2.plot(corte["proporcion_maxima_ceros"],
+                  corte["pct_demanda_train_valorizada"],
+                  color="0.55", marker="s", markersize=4, linewidth=1.2,
+                  linestyle="--", label="Cobertura valorizada")
+        der2.set_ylabel("Cobertura del valor (%)", color="0.4")
+        der2.tick_params(axis="y", colors="0.4")
+        der2.grid(visible=False)
+    seleccionado = corte.loc[
+        corte["proporcion_maxima_ceros"] == base_ceros
+    ]
+    if len(seleccionado):
+        der.scatter(seleccionado["proporcion_maxima_ceros"],
+                    seleccionado["n_series"], s=90, facecolors="none",
+                    edgecolors="black", linewidths=1.4, zorder=5)
+    der.set_title(
+        f"Sensibilidad del umbral de ceros\n(historial={base_hist} m, "
+        f"volumen={base_vol:.0f} u; el círculo es la decisión)", fontsize=9,
+    )
+
+    figura.suptitle("Figura 4. De la población a la muestra: nada ocurre en "
+                    "silencio", fontsize=10, x=0.01, ha="left")
+    figura.tight_layout()
+    return _guardar(figura, destino)
+
+
+def figura_linea_de_tiempo(cfg, destino: Path, dpi: int = 300) -> Path:
+    """F5 — El diseño temporal completo en una sola barra.
+
+    Diagrama, no datos: gestiones fiscales, los tres bloques, la ventana del
+    evento (trama), el fold interno del ajuste de hiperparámetros y los cortes.
+    Es la figura que responde de un vistazo «¿y acá no hay fuga?».
+    """
+    _estilo(dpi)
+    figura, eje = plt.subplots(figsize=(7.6, 2.6))
+
+    inicio = cfg.periodo.inicio.ordinal
+    fin_ent = cfg.particion.fin_entrenamiento.ordinal
+    fin_val = cfg.particion.fin_validacion.ordinal
+    fin = cfg.periodo.fin.ordinal
+
+    def _tramo(desde, hasta, y, alto, color, trama="", etiqueta=None):
+        eje.barh(y, hasta - desde + 1, left=desde, height=alto, color=color,
+                 hatch=trama, edgecolor="black", linewidth=0.7)
+        if etiqueta:
+            eje.text((desde + hasta) / 2, y, etiqueta, ha="center",
+                     va="center", fontsize=8.5,
+                     color="white" if color in ("black", "0.35") else "black")
+
+    _tramo(inicio, fin_ent, 0.62, 0.34, "0.72",
+           etiqueta="ENTRENAMIENTO · gestiones 2018–2024 (84 m)")
+    _tramo(fin_ent + 1, fin_val, 0.62, 0.34, "0.35",
+           etiqueta="VALIDACIÓN\n g2025")
+    _tramo(fin_val + 1, fin, 0.62, 0.34, "black", etiqueta="PRUEBA\n g2026")
+
+    if cfg.evento is not None:
+        ventana = cfg.evento.ventana()
+        _tramo(ventana[0].ordinal, ventana[-1].ordinal, 0.20, 0.16, "0.88",
+               trama="///")
+        eje.text((ventana[0].ordinal + ventana[-1].ordinal) / 2, 0.06,
+                 "evento exógeno (corregido solo en el ajuste)",
+                 ha="center", va="top", fontsize=7, color="0.3")
+
+    ajuste = cfg.crudo.get("lightgbm_tuning") or {}
+    if ajuste:
+        desde = pd.Period(str(ajuste["fold_desde"]), freq="M").ordinal
+        hasta = pd.Period(str(ajuste["fold_hasta"]), freq="M").ordinal
+        _tramo(desde, hasta, 1.02, 0.16, "0.55", trama="...")
+        eje.text(desde - 2, 1.02, "fold interno del ajuste\n"
+                 "de hiperparámetros (g2024)", ha="right", va="center",
+                 fontsize=7, color="0.3")
+
+    # La decisión del motor, sin flechas que crucen otras marcas: una nota
+    # corta bajo el bloque de validación.
+    eje.text((fin_ent + 1 + fin_val) / 2, 0.34,
+             "el motor decide acá", ha="center", va="center",
+             fontsize=7, color="0.25", style="italic")
+
+    marcas = [pd.Period(f"{anio}-04", freq="M") for anio in range(2017, 2027)]
+    eje.set_xticks([m.ordinal for m in marcas])
+    eje.set_xticklabels([f"abr\n{m.year}" for m in marcas], fontsize=7)
+    eje.set_xlim(inicio - 1.5, fin + 2.5)
+    eje.set_ylim(-0.30, 1.45)
+    eje.set_yticks([])
+    eje.set_title(
+        "Figura 5. El diseño temporal: cortes en frontera de gestión fiscal "
+        "y disciplina de cada ventana", loc="left", fontsize=10,
+    )
+    eje.grid(visible=False)
+    return _guardar(figura, destino)
+
+
+def figura_origenes_rodantes(cfg, destino: Path, dpi: int = 300) -> Path:
+    """F6 — El protocolo multihorizonte: orígenes rodantes sobre la prueba.
+
+    Cada fila es un origen (lo que el planificador sabe ese día, en gris) y su
+    proyección hacia adelante (línea con marcadores, h=1…H). La figura explica
+    sin palabras por qué h=1 agrega 12 orígenes y h=12 uno solo.
+    """
+    _estilo(dpi)
+    figura, eje = plt.subplots(figsize=(7.0, 3.6))
+
+    mh = cfg.multihorizonte
+    inicio_origenes = cfg.particion.fin_validacion
+    fin = cfg.periodo.fin
+    n_origenes = (fin - 1 - inicio_origenes).n + 1
+
+    for fila in range(n_origenes):
+        origen = inicio_origenes + fila
+        horizonte = min(mh.horizonte_maximo, (fin - origen).n)
+        y = n_origenes - fila
+        eje.plot([inicio_origenes.ordinal - 3.5, origen.ordinal], [y, y],
+                 color="0.8", linewidth=3.2, solid_capstyle="butt")
+        meses = [origen.ordinal + h for h in range(1, horizonte + 1)]
+        eje.plot(meses, [y] * len(meses), color="black", linewidth=1.0,
+                 marker="o", markersize=2.6)
+        eje.scatter([origen.ordinal], [y], marker="|", s=90, color="black",
+                    linewidths=1.6, zorder=5)
+
+    primero = n_origenes
+    eje.text(inicio_origenes.ordinal - 8, primero + 1.0, "historia conocida",
+             fontsize=7.5, color="0.35", ha="center")
+    eje.annotate("origen", xy=(inicio_origenes.ordinal, primero + 0.25),
+                 xytext=(inicio_origenes.ordinal + 1.2, primero + 1.0),
+                 fontsize=7.5, ha="center",
+                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
+    eje.text(inicio_origenes.ordinal + 8.5, primero + 1.0,
+             f"proyección h=1…{mh.horizonte_maximo}",
+             fontsize=7.5, color="0.1", ha="center")
+
+    meses_eje = [inicio_origenes + k for k in range(0, (fin - inicio_origenes).n + 1, 3)]
+    eje.set_xticks([m.ordinal for m in meses_eje])
+    eje.set_xticklabels([str(m) for m in meses_eje], fontsize=7)
+    eje.set_ylabel("Origen (uno por mes de prueba)")
+    eje.set_yticks([])
+    eje.set_ylim(0.2, n_origenes + 1.9)
+    eje.set_title(
+        "Figura 6. Orígenes rodantes: cada mes se re-proyecta todo el "
+        "horizonte, como opera la empresa", loc="left", fontsize=10,
+    )
+    eje.grid(axis="y", visible=False)
+    return _guardar(figura, destino)
+
+
+def figura_busqueda_hiperparametros(
+    ensayos: pd.DataFrame, destino: Path, dpi: int = 300
+) -> Path:
+    """F10 — La búsqueda de hiperparámetros, completa: un punto por ensayo.
+
+    D interna contra el número de ensayo, con un marcador por OBJETIVO de
+    entrenamiento. Si la hipótesis del sesgo es cierta, se ven tres nubes
+    separadas — y el lector ve además el camino del TPE, no solo al ganador.
+    """
+    _estilo(dpi)
+    figura, eje = plt.subplots(figsize=(7.0, 3.8))
+
+    estilos = {
+        "tweedie": dict(marker="o", color="black", s=26),
+        "regression_l1": dict(marker="s", color="0.45", s=24),
+        "regression_l2": dict(marker="^", color="0.70", s=26),
+    }
+    for objetivo, grupo in ensayos.groupby("objective", sort=True):
+        estilo = estilos.get(str(objetivo),
+                             dict(marker="x", color="0.3", s=24))
+        eje.scatter(grupo["ensayo"], grupo["D_interna"], label=str(objetivo),
+                    edgecolors="black", linewidths=0.5, **estilo)
+
+    mejor = ensayos.loc[ensayos["D_interna"].idxmin()]
+    eje.scatter([mejor["ensayo"]], [mejor["D_interna"]], s=170,
+                facecolors="none", edgecolors="black", linewidths=1.5, zorder=5)
+    eje.annotate(
+        f"mejor: D = {mejor['D_interna']:.1f}",
+        xy=(mejor["ensayo"], mejor["D_interna"]),
+        xytext=(mejor["ensayo"] - 9, mejor["D_interna"] + 5.5),
+        fontsize=8, arrowprops=dict(arrowstyle="->", color="0.4", lw=0.8),
+    )
+
+    eje.set_xlabel("Ensayo (orden del TPE, semilla fija)")
+    eje.set_ylabel("D interna valorizada (%)")
+    eje.set_title(
+        "Figura 10. La búsqueda de hiperparámetros: el objetivo de "
+        "entrenamiento separa tres nubes\n(fold interno = gestión 2024; "
+        "menor es mejor)", loc="left", fontsize=10,
+    )
+    eje.legend(frameon=False, fontsize=8, title="objective",
+               title_fontsize=8)
+    return _guardar(figura, destino)
+
+
+def figura_d_descompuesta(
+    suite_val: pd.DataFrame, destino: Path, dpi: int = 300
+) -> Path:
+    """F7 — LA figura principal: D descompuesta en sus dos términos.
+
+    Barras apiladas: el segmento oscuro es el WMAPE valorizado (cuánto se
+    erra), el claro con trama es |Bias| (cuánto de ese error es sistemático).
+    La descomposición cuenta sola la historia del brazo de aprendizaje
+    automático: su primer segmento siempre fue el más corto — lo hundía el
+    segundo. El signo del sesgo va anotado (la barra usa el valor absoluto).
+    """
+    _estilo(dpi)
+    datos = suite_val.sort_values("D", ascending=False).reset_index(drop=True)
+    n = len(datos)
+    posiciones = np.arange(n)
+
+    figura, eje = plt.subplots(figsize=(7.0, max(3.4, 0.42 * n + 1.4)))
+
+    eje.barh(posiciones, datos["wmape_val"], height=0.6, color="0.35",
+             edgecolor="black", linewidth=0.6, label="WMAPE valorizado")
+    eje.barh(posiciones, datos["bias_val"].abs(), left=datos["wmape_val"],
+             height=0.6, color="0.85", hatch="///", edgecolor="black",
+             linewidth=0.6, label="|Bias| valorizado")
+
+    for i, fila in datos.iterrows():
+        eje.text(fila["D"], i,
+                 f"  D = {fila['D']:.1f}  (bias {fila['bias_val']:+.1f})",
+                 va="center", ha="left", fontsize=7.5)
+
+    eje.set_yticks(posiciones)
+    eje.set_yticklabels(datos["modelo"])
+    eje.set_xlabel("D = WMAPE valorizado + |Bias valorizado| (%)")
+    eje.set_title(
+        "Figura 7. La métrica de decisión, descompuesta\n"
+        "(bloque de prueba, valorizado por costo; menor es mejor)",
+        loc="left", fontsize=10,
+    )
+    # Leyenda FUERA del área de datos: la barra más larga ocupa todo el ancho
+    # y cualquier esquina interna choca con una barra o con su etiqueta.
+    eje.legend(frameon=False, fontsize=8, ncols=2,
+               loc="lower right", bbox_to_anchor=(1.0, 1.005))
+    eje.grid(axis="y", visible=False)
+    eje.set_xlim(left=0)
+    eje.margins(x=0.30)
+    return _guardar(figura, destino)
 
 
 def figura3_dispersion(

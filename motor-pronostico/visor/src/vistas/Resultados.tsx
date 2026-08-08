@@ -46,12 +46,6 @@ export const vista: MetaVista = {
   descripcion: "Tabla 8, comparación por métrica y distribución por serie",
 };
 
-const FIGURAS = [
-  "figura2_error.png",
-  "figura3_dispersion.png",
-  "figura4_diferencia_critica.png",
-];
-
 export default function Resultados() {
   const corrida = useCorridaActiva();
   const resumen = useResumenMetricas(corrida);
@@ -59,6 +53,17 @@ export default function Resultados() {
   const valorizada = useCsvGenerico(corrida, "tabla_valorizada.csv");
   const manifiesto = useManifiesto(corrida);
   const errores = useErroresPorSerie(corrida);
+
+  // Galería por DESCUBRIMIENTO: toda figura del catálogo que la corrida haya
+  // emitido aparece sola (mismo principio aditivo que el resto del visor).
+  const FIGURAS = useMemo(
+    () =>
+      (manifiesto.data?.salidas ?? [])
+        .map((salida) => salida.archivo)
+        .filter((nombre) => nombre.endsWith(".png"))
+        .sort(),
+    [manifiesto.data],
+  );
 
   const [metrica, setMetrica] = useState<ClaveMetrica>("mae");
   const [agregado, setAgregado] = useState<Agregado>("mediana");
@@ -292,15 +297,24 @@ export default function Resultados() {
         <Typography variant="subtitle2">
           Figuras del documento — tal como van a la tesis
         </Typography>
-        <Tabs value={figura} onChange={(_, v) => setFigura(v)} sx={{ mb: 1 }}>
+        <Tabs
+          value={Math.min(figura, Math.max(FIGURAS.length - 1, 0))}
+          onChange={(_, v) => setFigura(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ mb: 1 }}
+        >
           {FIGURAS.map((nombre) => (
             <Tab key={nombre} label={nombre.replace(".png", "")} />
           ))}
         </Tabs>
         <Box
           component="img"
-          src={urlDeArtefacto(corrida, FIGURAS[figura])}
-          alt={FIGURAS[figura]}
+          src={urlDeArtefacto(
+            corrida,
+            FIGURAS[Math.min(figura, Math.max(FIGURAS.length - 1, 0))] ?? "",
+          )}
+          alt={FIGURAS[Math.min(figura, Math.max(FIGURAS.length - 1, 0))] ?? ""}
           sx={{
             maxWidth: "100%",
             border: "1px solid",

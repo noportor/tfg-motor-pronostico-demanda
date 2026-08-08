@@ -234,6 +234,14 @@ def main(argv: list[str] | None = None) -> int:
     tabla_ensayos = pd.DataFrame(filas_ensayos).sort_values("D_interna")
     tabla_ensayos.to_csv(destino / "lightgbm_tuning_ensayos.csv", index=False)
 
+    # F10 del catálogo: la búsqueda entera, un punto por ensayo. Tres nubes
+    # separadas por objetivo = la hipótesis del sesgo, visible de un vistazo.
+    from src.figuras import figura_busqueda_hiperparametros
+
+    figura_busqueda_hiperparametros(
+        tabla_ensayos, destino / "figura10_busqueda.png"
+    )
+
     mejor = estudio.best_trial
     resumen = {
         "semilla": int(ajuste["semilla"]),
