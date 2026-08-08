@@ -21,6 +21,13 @@ credentials*
 ~$*
 *.tmp
 
+# --- Documento: copias de trabajo que NO van al repositorio ------------------
+# El control de confidencialidad no puede mirar dentro de los binarios de
+# Office (ver documento/README.md). Las copias de trabajo de la tesis y las
+# observaciones del tribunal viven acá y no salen de esta máquina; al
+# repositorio entra solo la versión revisada a ojo.
+documento/privado/
+
 # --- Sistema operativo y editores -------------------------------------------
 Thumbs.db
 Desktop.ini
