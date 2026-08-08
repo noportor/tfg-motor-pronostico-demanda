@@ -27,7 +27,7 @@ from src import (
     particion, pruebas, series, unidad_analisis,
 )
 from src.exogenas import cargar_exogenas
-from src.config import cargar_config
+from src.config import cargar_config, gestion_de
 from src.costos import cargar_costos
 from src.modelos import construir_modelos
 from src.modelos.base import (
@@ -790,34 +790,125 @@ def comando_ejecutar(cfg) -> int:
     _fin(inicio)
 
     # --- 11. Figuras --------------------------------------------------------
+    # La numeración sigue el CATÁLOGO del documento (F1..F12); F9 (antes/
+    # después del feature engineering) compara dos corridas y vive en su
+    # script utilitario; F10 (la búsqueda de hiperparámetros) es artefacto del
+    # ajuste (salidas_tuning/).
     inicio = _paso(f"11/{total}", "Figuras")
     dpi = int(cfg.figuras.get("dpi", 300))
-    reporte.figura(figuras.figura2_error_compuesto(
-        resumen_completo, reporte.directorio / "figura2_error.png", dpi=dpi
+    artefactos_figuras: list[str] = []
+
+    def _figura(ruta):
+        reporte.figura(ruta)
+        artefactos_figuras.append(ruta.name)
+
+    if maestro.disponible:
+        periodo_crudo = df["fecha"].dt.to_period("M")
+        serie_crudo = (df["sku"].astype(str) + "|" + df["canal"].astype(str)
+                       + "|" + df["regional"].astype(str))
+        valor_crudo = df["cantidad"] * serie_crudo.map(maestro.costo_por_serie)
+
+        # F1 — perfil mensual por categoría (solo entrenamiento).
+        en_train = periodo_crudo <= cfg.particion.fin_entrenamiento
+        perfil = (
+            pd.DataFrame({
+                "categoria": df.loc[en_train, "categoria"],
+                "mes": df.loc[en_train, "fecha"].dt.month,
+                "valor": valor_crudo.loc[en_train],
+            })
+            .dropna(subset=["categoria", "valor"])
+            .groupby(["categoria", "mes"], observed=True)["valor"].sum()
+            .reset_index()
+        )
+        if len(perfil):
+            perfil["pct"] = 100 * perfil["valor"] / perfil.groupby(
+                "categoria", observed=True
+            )["valor"].transform("sum")
+            nov_feb = (
+                perfil.loc[perfil["mes"].isin([11, 12, 1, 2])]
+                .groupby("categoria", observed=True)["pct"].sum()
+            )
+            estacionales = tuple(sorted(nov_feb.index[nov_feb > 50].astype(str)))
+            _figura(figuras.figura_perfil_categorias(
+                perfil, estacionales,
+                reporte.directorio / "figura01_perfil_categorias.png", dpi=dpi,
+            ))
+
+        # F2 — demanda valorizada por gestión, con el contexto marcado.
+        gestion_crudo = df["fecha"].dt.year + (df["fecha"].dt.month >= 4)
+        por_gestion = (
+            pd.DataFrame({"gestion": gestion_crudo, "valor": valor_crudo})
+            .dropna().groupby("gestion")["valor"].sum().div(1e6)
+            .rename("valor_mm").reset_index()
+        )
+        gestiones_evento = tuple(sorted({
+            gestion_de(m, cfg.periodo.mes_inicio_gestion)
+            for m in (cfg.evento.ventana() if cfg.evento else [])
+        }))
+        _figura(figuras.figura_volumen_gestiones(
+            por_gestion, gestiones_evento,
+            gestion_de(cfg.particion.fin_validacion, cfg.periodo.mes_inicio_gestion),
+            gestion_de(cfg.periodo.fin, cfg.periodo.mes_inicio_gestion),
+            reporte.directorio / "figura02_volumen_gestiones.png", dpi=dpi,
+        ))
+
+    # F3 — la unidad de análisis en dos paneles.
+    _figura(figuras.figura_unidad_analisis(
+        informe_unidad.tabla_sku,
+        reporte.directorio / "figura03_unidad_analisis.png", dpi=dpi,
     ))
-    reporte.figura(figuras.figura3_dispersion(
-        errores, reporte.directorio / "figura3_dispersion.png", dpi=dpi
+
+    # F4 — cascada de la muestra + sensibilidad del umbral de ceros.
+    _figura(figuras.figura_muestra_sensibilidad(
+        informe_cohorte.tabla_flujo(), sensibilidad, informe_cohorte.umbrales,
+        reporte.directorio / "figura04_muestra_sensibilidad.png", dpi=dpi,
     ))
-    reporte.figura(figuras.figura4_diferencia_critica(
-        resultados["friedman"].rangos_medios,
-        resultados["friedman"].diferencia_critica,
-        resultados["friedman"].n_bloques,
-        reporte.directorio / "figura4_diferencia_critica.png", dpi=dpi,
+
+    # F5 y F6 — los diagramas del diseño.
+    _figura(figuras.figura_linea_de_tiempo(
+        cfg, reporte.directorio / "figura05_linea_de_tiempo.png", dpi=dpi
     ))
-    artefactos_figuras = ["figura2_error.png", "figura3_dispersion.png",
-                          "figura4_diferencia_critica.png"]
+    if cfg.multihorizonte is not None and cfg.multihorizonte.activo:
+        _figura(figuras.figura_origenes_rodantes(
+            cfg, reporte.directorio / "figura06_origenes_rodantes.png", dpi=dpi
+        ))
+
+    # F7 — la figura principal: D descompuesta.
+    if suite_val is not None:
+        _figura(figuras.figura_d_descompuesta(
+            suite_val, reporte.directorio / "figura07_d_descompuesta.png",
+            dpi=dpi,
+        ))
+
+    # F8 — dispersión por serie.
+    _figura(figuras.figura3_dispersion(
+        errores, reporte.directorio / "figura08_dispersion.png", dpi=dpi
+    ))
+
+    # F11 — curva de degradación con el horizonte.
     if resultado_mh is not None:
-        reporte.figura(figuras.figura5_horizonte(
+        _figura(figuras.figura5_horizonte(
             resultado_mh.resumen_horizonte,
-            reporte.directorio / "figura5_horizonte.png",
+            reporte.directorio / "figura11_horizonte.png",
             benchmarks=(str(cfg.modelos["benchmark_promedio_movil"]),
                         str(cfg.modelos["benchmark_naive"])),
             dpi=dpi,
         ))
-        artefactos_figuras.append("figura5_horizonte.png")
+
+    # F12 — diagrama de diferencia crítica.
+    _figura(figuras.figura4_diferencia_critica(
+        resultados["friedman"].rangos_medios,
+        resultados["friedman"].diferencia_critica,
+        resultados["friedman"].n_bloques,
+        reporte.directorio / "figura12_diferencia_critica.png", dpi=dpi,
+    ))
+
+    print(f"      {len(artefactos_figuras)} figuras del catálogo")
     reporte.etapa(
-        "figuras", "Figuras del documento", rf="RF-9",
-        decisiones={"dpi": dpi, "escala_grises": True},
+        "figuras", "Figuras del documento (catálogo F1..F12)", rf="RF-9",
+        decisiones={"dpi": dpi, "escala_grises": True,
+                    "catalogo": "F9 en scripts/figura_antes_despues.py; "
+                                "F10 en salidas_tuning/"},
         artefactos=artefactos_figuras,
         duracion_s=time.perf_counter() - inicio,
     )
