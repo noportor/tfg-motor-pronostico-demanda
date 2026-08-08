@@ -11,6 +11,7 @@ configuración propia. Ningún número de esta prueba llega al documento (RN-1).
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import numpy as np
@@ -57,6 +58,7 @@ SALIDAS_ESPERADAS = (
     "figura11_horizonte.png",
     "figura12_diferencia_critica.png",
     "figura13_casos.png",
+    "insumos_figuras.pkl",
     "manifiesto.json",
 )
 
@@ -472,3 +474,40 @@ def test_registrar_dos_veces_la_misma_etapa_falla(cfg):
     reporte.etapa("x", "Una etapa")
     with pytest.raises(ValueError):
         reporte.etapa("x", "La misma otra vez")
+
+
+def test_el_comando_figuras_reproduce_los_png_del_pipeline(corrida):
+    """El camino rápido (`main.py figuras`) redibuja desde insumos_figuras.pkl
+    y tiene que producir EXACTAMENTE los PNG que dejó el pipeline: mismo
+    dibujador, mismos insumos. Si esto diverge, el atajo dejó de ser un atajo
+    y volvió a ser un riesgo (RN-5). También re-sella los hashes en el
+    manifiesto, que debe quedar coherente con lo que hay en disco."""
+    directorio = corrida.ruta_salidas
+    nombres = sorted(p.name for p in directorio.glob("figura*.png"))
+    assert nombres, "La corrida no dejó figuras"
+    antes = {
+        n: hashlib.sha256((directorio / n).read_bytes()).hexdigest()
+        for n in nombres
+    }
+
+    assert main.comando_figuras(corrida) == 0
+
+    despues = {
+        n: hashlib.sha256((directorio / n).read_bytes()).hexdigest()
+        for n in nombres
+    }
+    assert antes == despues, (
+        "El redibujo cambió los PNG sin que cambiaran los datos"
+    )
+
+    manifiesto = json.loads(
+        (directorio / "manifiesto.json").read_text(encoding="utf-8")
+    )
+    assert manifiesto["figuras_redibujadas"]["figuras"] == nombres
+    hashes_manifiesto = {
+        s["archivo"]: s["sha256"] for s in manifiesto["salidas"]
+    }
+    for nombre in nombres:
+        assert hashes_manifiesto[nombre] == despues[nombre], (
+            f"El manifiesto quedó con un hash viejo para {nombre}"
+        )

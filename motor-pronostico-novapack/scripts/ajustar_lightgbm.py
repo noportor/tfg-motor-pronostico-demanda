@@ -76,7 +76,24 @@ def main(argv: list[str] | None = None) -> int:
         "--destino", default=None,
         help="Directorio de artefactos (por defecto, salidas_tuning/).",
     )
+    parser.add_argument(
+        "--solo-figura", action="store_true",
+        help="No re-corre la búsqueda: redibuja figura10 desde el CSV de "
+             "ensayos ya persistido (misma corrida, solo cambia el dibujo).",
+    )
     args = parser.parse_args(argv)
+
+    if args.solo_figura:
+        from src.figuras import figura_busqueda_hiperparametros
+
+        destino = Path(args.destino) if args.destino else RAIZ / "salidas_tuning"
+        ensayos = pd.read_csv(destino / "lightgbm_tuning_ensayos.csv")
+        ruta = figura_busqueda_hiperparametros(
+            ensayos, destino / "figura10_busqueda.png"
+        )
+        print(f"Figura redibujada desde {destino / 'lightgbm_tuning_ensayos.csv'}")
+        print(f"Figura  : {ruta}")
+        return 0
 
     cfg = cargar_config(args.config)
     ajuste = dict(cfg.crudo.get("lightgbm_tuning") or {})

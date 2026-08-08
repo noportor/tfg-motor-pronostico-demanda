@@ -35,7 +35,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from src.figuras import _estilo, _guardar  # noqa: E402
+from src.figuras import _es, _estilo, _guardar  # noqa: E402
 
 MODELOS = ("lightgbm", "motor")
 
@@ -79,6 +79,14 @@ def main(argv: list[str] | None = None) -> int:
                   ("multihorizonte", "Multihorizonte global (D(h), %)"))
     figura, ejes = plt.subplots(1, 2, figsize=(7.2, 3.4), sharey=False)
 
+    # Escala vertical COMÚN: con límites por panel, barras de valores
+    # parecidos quedaban a alturas distintas y la comparación a ojo mentía.
+    tope = 1.30 * max(
+        corrida[clave][m]
+        for corrida in (antes, despues) for clave, _ in protocolos
+        for m in MODELOS if np.isfinite(corrida[clave][m])
+    )
+
     for eje, (clave, titulo) in zip(ejes, protocolos):
         posiciones = np.arange(len(MODELOS))
         ancho = 0.36
@@ -91,26 +99,29 @@ def main(argv: list[str] | None = None) -> int:
                 edgecolor="black", linewidth=0.7,
                 label="después (features v2 + búsqueda)")
         for x, (va, vd) in zip(posiciones, zip(v_antes, v_despues)):
-            eje.text(x - ancho / 2, va, f"{va:.1f}", ha="center",
+            eje.text(x - ancho / 2, va, _es(va, 1), ha="center",
                      va="bottom", fontsize=8)
-            eje.text(x + ancho / 2, vd, f"{vd:.1f}", ha="center",
+            eje.text(x + ancho / 2, vd, _es(vd, 1), ha="center",
                      va="bottom", fontsize=8)
-            eje.annotate(f"{vd - va:+.1f}", xy=(x, max(va, vd)),
-                         xytext=(x, max(va, vd) * 1.12), ha="center",
+            # El delta lleva unidad (puntos porcentuales): sin ella el número
+            # en negrita quedaba sin explicación en la figura.
+            eje.annotate(f"{_es(vd - va, 1, signo=True)} pp",
+                         xy=(x, max(va, vd)),
+                         xytext=(x, max(va, vd) + tope * 0.055), ha="center",
                          fontsize=8.5, fontweight="bold")
         eje.set_xticks(posiciones)
         eje.set_xticklabels(MODELOS)
         eje.set_title(titulo, fontsize=9)
-        eje.set_ylim(0, max(*v_antes, *v_despues) * 1.28)
+        eje.set_ylim(0, tope)
         eje.grid(axis="x", visible=False)
 
     ejes[0].set_ylabel("D valorizada (%)")
-    ejes[0].legend(frameon=False, fontsize=7.5, loc="upper right")
-    figura.suptitle(
-        "Figura 9. El feature engineering y la función de pérdida, aislados: "
-        "misma muestra, mismos protocolos", fontsize=10, x=0.01, ha="left",
-    )
-    figura.tight_layout()
+    # Leyenda ARRIBA de los paneles, en el espacio que dejó el título: dentro
+    # del panel izquierdo tapaba la anotación del delta de lightgbm.
+    manijas, nombres = ejes[0].get_legend_handles_labels()
+    figura.legend(manijas, nombres, frameon=False, fontsize=8, ncols=2,
+                  loc="lower center", bbox_to_anchor=(0.5, 0.97))
+    figura.tight_layout(rect=(0, 0, 1, 0.96))
 
     destino = RAIZ / args.destino
     ruta = _guardar(figura, destino / "figura09_antes_despues.png")

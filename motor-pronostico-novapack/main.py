@@ -2,11 +2,17 @@
 
     python main.py inspeccionar     # fases 1–2: carga e informe de inspección
     python main.py ejecutar         # pipeline completo
+    python main.py figuras          # redibuja el catálogo SIN re-correr nada
 
 El plan de trabajo indica detenerse a leer el informe de inspección antes de
 seguir: ahí se calibran los criterios de inclusión, y el N resultante es el
 tamaño de la muestra que se declara en la tesis. Por eso ``inspeccionar`` es un
 comando aparte y no un paso silencioso del pipeline.
+
+``figuras`` existe porque retocar un rótulo no puede costar una corrida
+completa: el pipeline persiste los insumos del catálogo en
+``insumos_figuras.pkl`` y este comando los redibuja en segundos, re-sellando
+los hashes de los PNG en el manifiesto (los datos de la corrida no cambian).
 """
 
 from __future__ import annotations
@@ -34,7 +40,9 @@ from src.modelos.base import (
     aplicar_respaldo, enmascarar_fuera_de_vida, mae_naive_entrenamiento, truncar_en_cero,
 )
 from src.modelos.motor import Motor
-from src.reporte import Reporte, informe_pruebas
+from src.reporte import (
+    Reporte, actualizar_manifiesto_figuras, informe_pruebas,
+)
 
 
 def _paso(numero: str, texto: str) -> float:
@@ -83,6 +91,131 @@ def comando_inspeccionar(cfg) -> int:
     print(f"\nInforme escrito en {ruta}")
     print("\nLeé el informe y ajustá `inclusion` en config/config.yaml antes de "
           "correr `main.py ejecutar`.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+
+def dibujar_catalogo(cfg, insumos: dict, directorio: Path) -> list[Path]:
+    """Dibuja el catálogo de figuras del pipeline desde insumos PUROS.
+
+    Es el único camino de dibujo: ``ejecutar`` lo llama con los insumos recién
+    calculados (y los persiste en ``insumos_figuras.pkl``), y ``figuras`` lo
+    llama con los persistidos — así el PNG del camino rápido es idéntico al
+    del pipeline por construcción, no por casualidad. Un insumo en ``None``
+    apaga su figura, igual que en el pipeline (sin maestro no hay F1/F2/F7).
+    """
+    dpi = int(insumos.get("dpi", 300))
+    rutas: list[Path] = []
+
+    perfil = insumos.get("perfil_categorias")
+    if perfil is not None and len(perfil):
+        rutas.append(figuras.figura_perfil_categorias(
+            perfil, insumos["estacionales"],
+            directorio / "figura01_perfil_categorias.png", dpi=dpi,
+        ))
+
+    if insumos.get("por_gestion") is not None:
+        rutas.append(figuras.figura_volumen_gestiones(
+            insumos["por_gestion"], insumos["gestiones_evento"],
+            insumos["gestion_validacion"], insumos["gestion_prueba"],
+            directorio / "figura02_volumen_gestiones.png", dpi=dpi,
+        ))
+
+    rutas.append(figuras.figura_unidad_analisis(
+        insumos["tabla_sku"],
+        directorio / "figura03_unidad_analisis.png", dpi=dpi,
+    ))
+
+    rutas.append(figuras.figura_muestra_sensibilidad(
+        insumos["tabla_flujo"], insumos["sensibilidad"], insumos["umbrales"],
+        directorio / "figura04_muestra_sensibilidad.png", dpi=dpi,
+    ))
+
+    # F5 y F6 son diagramas del DISEÑO: salen de la configuración, no de la
+    # corrida (por eso reciben cfg y no insumos).
+    rutas.append(figuras.figura_linea_de_tiempo(
+        cfg, directorio / "figura05_linea_de_tiempo.png", dpi=dpi
+    ))
+    if cfg.multihorizonte is not None and cfg.multihorizonte.activo:
+        rutas.append(figuras.figura_origenes_rodantes(
+            cfg, directorio / "figura06_origenes_rodantes.png", dpi=dpi
+        ))
+
+    if insumos.get("suite_val") is not None:
+        rutas.append(figuras.figura_d_descompuesta(
+            insumos["suite_val"],
+            directorio / "figura07_d_descompuesta.png", dpi=dpi,
+        ))
+
+    rutas.append(figuras.figura3_dispersion(
+        insumos["errores"], directorio / "figura08_dispersion.png", dpi=dpi
+    ))
+
+    if insumos.get("resumen_horizonte") is not None:
+        rutas.append(figuras.figura5_horizonte(
+            insumos["resumen_horizonte"],
+            directorio / "figura11_horizonte.png",
+            benchmarks=insumos["benchmarks"], dpi=dpi,
+        ))
+
+    if insumos.get("casos"):
+        rutas.append(figuras.figura_casos(
+            insumos["panel_real_casos"], insumos["predicciones_casos"],
+            insumos["casos"], insumos["inicio_validacion"],
+            insumos["inicio_prueba"],
+            directorio / "figura13_casos.png", dpi=dpi,
+            desde=insumos["desde_casos"],
+        ))
+
+    friedman = insumos["friedman"]
+    rutas.append(figuras.figura4_diferencia_critica(
+        friedman["rangos_medios"], friedman["diferencia_critica"],
+        friedman["n_bloques"],
+        directorio / "figura12_diferencia_critica.png", dpi=dpi,
+        alfa=friedman["alfa"],
+    ))
+
+    return rutas
+
+
+def comando_figuras(cfg) -> int:
+    """Redibuja el catálogo desde los insumos persistidos, sin re-correr nada.
+
+    El pipeline tarda lo que tardan los modelos (y va a tardar más cuando el
+    motor sume brazos); retocar un rótulo no puede costar eso. Los DATOS de
+    las figuras quedaron en ``insumos_figuras.pkl`` al final de la última
+    corrida: acá solo se redibuja y se re-sellan los hashes en el manifiesto.
+    """
+    import pickle
+
+    directorio = cfg.ruta_salidas
+    ruta_insumos = directorio / "insumos_figuras.pkl"
+    if not ruta_insumos.exists():
+        raise SystemExit(
+            f"No existe {ruta_insumos}: los insumos los persiste el paso de "
+            "figuras del pipeline. Corré `python main.py ejecutar` una vez; "
+            "después cada retoque de figura se redibuja acá en segundos."
+        )
+    with ruta_insumos.open("rb") as archivo:
+        insumos = pickle.load(archivo)
+
+    if insumos.get("config_sha256") != cfg.hash_configuracion():
+        print("AVISO: config.yaml cambió desde la corrida que persistió los "
+              "insumos; las figuras salen con los DATOS de aquella corrida.")
+
+    inicio = _paso("1/2", "Redibujando el catálogo desde insumos_figuras.pkl")
+    rutas = dibujar_catalogo(cfg, insumos, directorio)
+    print(f"      {len(rutas)} figuras del catálogo")
+    _fin(inicio)
+
+    inicio = _paso("2/2", "Re-sellando los hashes de las figuras en el manifiesto")
+    actualizadas = actualizar_manifiesto_figuras(directorio, rutas)
+    print(f"      {actualizadas} entradas del manifiesto actualizadas"
+          if actualizadas else "      (sin manifiesto que actualizar)")
+    _fin(inicio)
+
+    print(f"\nFiguras en {directorio}")
     return 0
 
 
@@ -894,88 +1027,68 @@ def comando_ejecutar(cfg) -> int:
     # ajuste (salidas_tuning/).
     inicio = _paso(f"11/{total}", "Figuras")
     dpi = int(cfg.figuras.get("dpi", 300))
-    artefactos_figuras: list[str] = []
 
-    def _figura(ruta):
-        reporte.figura(ruta)
-        artefactos_figuras.append(ruta.name)
+    # --- Los insumos del catálogo, como DATOS puros -------------------------
+    # Todo lo que las figuras necesitan se junta acá y se persiste
+    # (insumos_figuras.pkl): `main.py figuras` redibuja el catálogo en
+    # segundos sin re-correr el pipeline. Retocar un rótulo no puede costar
+    # una corrida entera — y menos cuando el motor sume más modelos.
+    insumos: dict = {
+        "config_sha256": cfg.hash_configuracion(),
+        "dpi": dpi,
+        "perfil_categorias": perfil_categorias,
+        "estacionales": estacionales,
+        "por_gestion": None,
+        "gestiones_evento": (),
+        "gestion_validacion": gestion_de(
+            cfg.particion.fin_validacion, cfg.periodo.mes_inicio_gestion),
+        "gestion_prueba": gestion_de(
+            cfg.periodo.fin, cfg.periodo.mes_inicio_gestion),
+        "tabla_sku": informe_unidad.tabla_sku,
+        "tabla_flujo": informe_cohorte.tabla_flujo(),
+        "sensibilidad": sensibilidad,
+        "umbrales": informe_cohorte.umbrales,
+        "suite_val": suite_val,
+        "errores": errores,
+        "resumen_horizonte": (resultado_mh.resumen_horizonte
+                              if resultado_mh is not None else None),
+        "benchmarks": (str(cfg.modelos["benchmark_promedio_movil"]),
+                       str(cfg.modelos["benchmark_naive"])),
+        "casos": [],
+        "panel_real_casos": None,
+        "predicciones_casos": {},
+        "inicio_validacion": cfg.inicio_validacion,
+        "inicio_prueba": cfg.inicio_prueba,
+        # Últimas cuatro gestiones antes de validación: la forma se ve sin
+        # comprimir una década en cada panel.
+        "desde_casos": cfg.inicio_validacion - 48,
+        "friedman": {
+            "rangos_medios": resultados["friedman"].rangos_medios,
+            "diferencia_critica": resultados["friedman"].diferencia_critica,
+            "n_bloques": resultados["friedman"].n_bloques,
+            "alfa": cfg.pruebas.alfa,
+        },
+    }
 
     if maestro.disponible:
+        # F2 — demanda valorizada por gestión, con el contexto marcado.
         serie_crudo = (df["sku"].astype(str) + "|" + df["canal"].astype(str)
                        + "|" + df["regional"].astype(str))
         valor_crudo = df["cantidad"] * serie_crudo.map(maestro.costo_por_serie)
-
-        # F1 — perfil mensual por categoría (perfil y regla de estacionales ya
-        # calculados junto a los estratos, antes del paso 9).
-        if perfil_categorias is not None and len(perfil_categorias):
-            _figura(figuras.figura_perfil_categorias(
-                perfil_categorias, estacionales,
-                reporte.directorio / "figura01_perfil_categorias.png", dpi=dpi,
-            ))
-
-        # F2 — demanda valorizada por gestión, con el contexto marcado.
         gestion_crudo = df["fecha"].dt.year + (df["fecha"].dt.month >= 4)
-        por_gestion = (
+        insumos["por_gestion"] = (
             pd.DataFrame({"gestion": gestion_crudo, "valor": valor_crudo})
             .dropna().groupby("gestion")["valor"].sum().div(1e6)
             .rename("valor_mm").reset_index()
         )
-        gestiones_evento = tuple(sorted({
+        insumos["gestiones_evento"] = tuple(sorted({
             gestion_de(m, cfg.periodo.mes_inicio_gestion)
             for m in (cfg.evento.ventana() if cfg.evento else [])
         }))
-        _figura(figuras.figura_volumen_gestiones(
-            por_gestion, gestiones_evento,
-            gestion_de(cfg.particion.fin_validacion, cfg.periodo.mes_inicio_gestion),
-            gestion_de(cfg.periodo.fin, cfg.periodo.mes_inicio_gestion),
-            reporte.directorio / "figura02_volumen_gestiones.png", dpi=dpi,
-        ))
-
-    # F3 — la unidad de análisis en dos paneles.
-    _figura(figuras.figura_unidad_analisis(
-        informe_unidad.tabla_sku,
-        reporte.directorio / "figura03_unidad_analisis.png", dpi=dpi,
-    ))
-
-    # F4 — cascada de la muestra + sensibilidad del umbral de ceros.
-    _figura(figuras.figura_muestra_sensibilidad(
-        informe_cohorte.tabla_flujo(), sensibilidad, informe_cohorte.umbrales,
-        reporte.directorio / "figura04_muestra_sensibilidad.png", dpi=dpi,
-    ))
-
-    # F5 y F6 — los diagramas del diseño.
-    _figura(figuras.figura_linea_de_tiempo(
-        cfg, reporte.directorio / "figura05_linea_de_tiempo.png", dpi=dpi
-    ))
-    if cfg.multihorizonte is not None and cfg.multihorizonte.activo:
-        _figura(figuras.figura_origenes_rodantes(
-            cfg, reporte.directorio / "figura06_origenes_rodantes.png", dpi=dpi
-        ))
-
-    # F7 — la figura principal: D descompuesta.
-    if suite_val is not None:
-        _figura(figuras.figura_d_descompuesta(
-            suite_val, reporte.directorio / "figura07_d_descompuesta.png",
-            dpi=dpi,
-        ))
-
-    # F8 — dispersión por serie.
-    _figura(figuras.figura3_dispersion(
-        errores, reporte.directorio / "figura08_dispersion.png", dpi=dpi
-    ))
-
-    # F11 — curva de degradación con el horizonte.
-    if resultado_mh is not None:
-        _figura(figuras.figura5_horizonte(
-            resultado_mh.resumen_horizonte,
-            reporte.directorio / "figura11_horizonte.png",
-            benchmarks=(str(cfg.modelos["benchmark_promedio_movil"]),
-                        str(cfg.modelos["benchmark_naive"])),
-            dpi=dpi,
-        ))
 
     # F13 — casos ilustrativos, elegidos por REGLA declarada (no a dedo):
     # la serie de mayor demanda valorizada de entrenamiento de cada régimen.
+    # La SELECCIÓN es dato y se decide acá; el camino rápido solo redibuja.
     if maestro.disponible and valor_por_serie is not None and len(valor_por_serie):
         en_cohorte = set(cohorte_ajustada["serie"].unique())
         valor_cohorte = valor_por_serie.loc[
@@ -986,48 +1099,53 @@ def comando_ejecutar(cfg) -> int:
             if exogenas.categoria_por_serie is not None else pd.Series(dtype=str)
         )
 
+        skus_usados: set[str] = set()
+
         def _mayor(filtro, etiqueta) -> tuple[str, str] | None:
-            candidatas = [s for s in valor_cohorte.index if filtro(s)]
+            # Regla declarada: la serie de mayor valor del régimen cuyo SKU no
+            # haya aparecido ya — sin la exclusión, dos combinaciones del
+            # mismo SKU pueden ganar dos paneles y, como la etiqueta solo
+            # muestra el SKU (la regional es confidencial), el lector vería
+            # el mismo rótulo dos veces.
+            candidatas = [s for s in valor_cohorte.index
+                          if filtro(s) and s.split("|")[0] not in skus_usados]
             if not candidatas:
                 return None
             serie = candidatas[0]
+            skus_usados.add(serie.split("|")[0])
             # SOLO el SKU seudonimizado en el título: esta figura va al
             # documento publicado y el nombre real de la regional es
             # información de la empresa (Anexo B).
             return serie, f"{etiqueta}\n{serie.split('|')[0]}"
 
+        # Etiquetas cortas: los rótulos largos desbordaban el ancho del panel.
         casos = [caso for caso in (
             _mayor(lambda s: categoria_serie.get(s) == "CUADERNOS",
-                   "Estacional de campaña (mayor valor en CUADERNOS)"),
+                   "Estacional de campaña (CUADERNOS)"),
             _mayor(lambda s: categoria_serie.get(s) == "PAPEL FOTOCOPIA",
-                   "Recurrente (mayor valor en PAPEL FOTOCOPIA)"),
+                   "Recurrente (PAPEL FOTOCOPIA)"),
             _mayor(lambda s: regimen_por_serie.get(s)
                    in ("intermitente", "lumpy"),
-                   "Demanda esporádica (mayor valor intermitente/lumpy)"),
+                   "Esporádica (intermitente/lumpy)"),
             _mayor(lambda s: regimen_por_serie.get(s) == "erratica",
-                   "Regular pero volátil (mayor valor errática)"),
+                   "Volátil (errática)"),
         ) if caso is not None]
 
         if casos:
-            _figura(figuras.figura_casos(
-                panel_real,
-                {m: predicciones[m] for m in
-                 ("motor", "lightgbm", cfg.modelos["benchmark_promedio_movil"])
-                 if m in predicciones},
-                casos, cfg.inicio_validacion, cfg.inicio_prueba,
-                reporte.directorio / "figura13_casos.png", dpi=dpi,
-                # Últimas cuatro gestiones antes de validación: la forma se ve
-                # sin comprimir una década en cada panel.
-                desde=cfg.inicio_validacion - 48,
-            ))
+            columnas = [serie for serie, _ in casos]
+            insumos["casos"] = casos
+            insumos["panel_real_casos"] = panel_real[columnas]
+            insumos["predicciones_casos"] = {
+                m: predicciones[m][columnas] for m in
+                ("motor", "lightgbm", cfg.modelos["benchmark_promedio_movil"])
+                if m in predicciones
+            }
 
-    # F12 — diagrama de diferencia crítica.
-    _figura(figuras.figura4_diferencia_critica(
-        resultados["friedman"].rangos_medios,
-        resultados["friedman"].diferencia_critica,
-        resultados["friedman"].n_bloques,
-        reporte.directorio / "figura12_diferencia_critica.png", dpi=dpi,
-    ))
+    reporte.insumos("insumos_figuras.pkl", insumos)
+    artefactos_figuras: list[str] = []
+    for ruta in dibujar_catalogo(cfg, insumos, reporte.directorio):
+        reporte.figura(ruta)
+        artefactos_figuras.append(ruta.name)
 
     print(f"      {len(artefactos_figuras)} figuras del catálogo")
     reporte.etapa(
@@ -1035,7 +1153,12 @@ def comando_ejecutar(cfg) -> int:
         decisiones={"dpi": dpi, "escala_grises": True,
                     "catalogo": "F9 en scripts/figura_antes_despues.py; "
                                 "F10 en salidas_tuning/"},
-        artefactos=artefactos_figuras,
+        artefactos=artefactos_figuras + ["insumos_figuras.pkl"],
+        notas=[
+            "insumos_figuras.pkl persiste los insumos del catálogo: "
+            "`python main.py figuras` redibuja estos PNG en segundos sin "
+            "re-correr el pipeline y re-sella sus hashes en el manifiesto.",
+        ],
         duracion_s=time.perf_counter() - inicio,
     )
     _fin(inicio)
@@ -1083,8 +1206,10 @@ def main(argv: list[str] | None = None) -> int:
         description="Motor de pronóstico de demanda — NOVAPACK S.A.",
     )
     parser.add_argument(
-        "comando", choices=["inspeccionar", "ejecutar"],
-        help="inspeccionar: carga e informe. ejecutar: pipeline completo.",
+        "comando", choices=["inspeccionar", "ejecutar", "figuras"],
+        help="inspeccionar: carga e informe. ejecutar: pipeline completo. "
+             "figuras: redibuja el catálogo desde insumos_figuras.pkl sin "
+             "re-correr el pipeline.",
     )
     parser.add_argument("--config", default=None, help="Ruta a config.yaml")
     parser.add_argument(
@@ -1111,6 +1236,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.comando == "inspeccionar":
         return comando_inspeccionar(cfg)
+    if args.comando == "figuras":
+        return comando_figuras(cfg)
     return comando_ejecutar(cfg)
 
 
