@@ -221,3 +221,40 @@ def test_tabla8_tiene_las_columnas_del_documento():
     for columna in ("Modelo", "MAE medio (unidades)", "MAPE medio (%)",
                     "RMSE medio (unidades)", "Bias medio (%)"):
         assert columna in t8.columns
+
+
+def test_suite_por_estrato_reproduce_los_subconjuntos():
+    """La suite por estrato es EXACTAMENTE la suite completa sobre el
+    subconjunto: misma definición, ninguna cocina nueva. Y una serie sin
+    estrato asignado queda como sin_clasificar — visible, no descartada."""
+    indice = pd.period_range("2025-04", periods=2, freq="M")
+    real = pd.DataFrame(
+        {"EST": [10.0, 10.0], "REC": [20.0, 20.0], "HUERFANA": [5.0, 5.0]},
+        index=indice,
+    )
+    pred = pd.DataFrame(
+        {"EST": [12.0, 12.0], "REC": [18.0, 18.0], "HUERFANA": [6.0, 6.0]},
+        index=indice,
+    )
+    escala = pd.Series({"EST": 1.0, "REC": 1.0, "HUERFANA": 1.0})
+    errores = {"m": metricas.metricas_por_serie(real, pred, escala)}
+    costos = pd.Series({"EST": 2.0, "REC": 1.0, "HUERFANA": 3.0})
+    estratos = {"tipo": pd.Series({"EST": "estacional", "REC": "recurrente"})}
+
+    por_estrato = metricas.suite_valorizada_por_estrato(
+        errores, costos, estratos
+    ).set_index("estrato")
+
+    # El estrato 'estacional' debe reproducir la suite sobre {EST} sola.
+    solo_est = metricas.suite_valorizada(
+        {"m": errores["m"].loc[["EST"]]}, costos
+    ).iloc[0]
+    assert por_estrato.loc["estacional", "D"] == pytest.approx(solo_est["D"])
+    assert por_estrato.loc["estacional", "wmape_val"] == pytest.approx(
+        solo_est["wmape_val"]
+    )
+
+    # La huérfana no desaparece: estrato sin_clasificar.
+    assert "sin_clasificar" in por_estrato.index
+    assert set(por_estrato.index) == {"estacional", "recurrente",
+                                      "sin_clasificar"}
