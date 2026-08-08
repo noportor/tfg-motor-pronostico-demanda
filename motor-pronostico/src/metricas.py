@@ -304,6 +304,59 @@ def suite_valorizada(
     return pd.DataFrame(filas).sort_values("D").reset_index(drop=True)
 
 
+def suite_valorizada_por_estrato(
+    errores: dict[str, pd.DataFrame],
+    costo_por_serie: pd.Series,
+    estratos: dict[str, pd.Series],
+    orden: list[str] | None = None,
+) -> pd.DataFrame:
+    """La suite valorizada, repetida DENTRO de cada estrato declarado.
+
+    Responde la pregunta que el agregado esconde: ¿quién gana en cada régimen
+    de demanda, y de dónde viene el dominio de cada brazo? Cada dimensión de
+    estratificación (régimen ADI–CV², tipo de categoría) parte las series en
+    grupos y la suite completa se recalcula dentro de cada grupo — misma
+    definición de D, mismo maestro de costos, ningún número nuevo que
+    justificar.
+
+    Args:
+        estratos: nombre de la dimensión -> Series (índice serie -> estrato).
+            Las series sin estrato asignado se agrupan como «sin_clasificar»:
+            visibles, jamás descartadas.
+    """
+    filas = []
+    for dimension, asignacion in estratos.items():
+        # El universo del reparto son las series evaluadas (las del primer
+        # modelo sirven: resumen() ya garantiza la intersección común).
+        series_evaluadas = next(iter(errores.values())).index
+        etiquetas = asignacion.reindex(series_evaluadas).fillna("sin_clasificar")
+        for estrato in sorted(etiquetas.unique()):
+            del_estrato = set(etiquetas.index[etiquetas == estrato])
+            recorte = {
+                modelo: tabla.loc[tabla.index.isin(del_estrato)]
+                for modelo, tabla in errores.items()
+            }
+            if not any(len(t) for t in recorte.values()):
+                continue
+            try:
+                suite = suite_valorizada(recorte, costo_por_serie, orden=orden)
+            except ValueError:
+                # Estrato sin demanda valorizada (todo sin costo): visible.
+                continue
+            filas.append(
+                suite.assign(dimension=dimension, estrato=estrato)
+            )
+    if not filas:
+        return pd.DataFrame(columns=["dimension", "estrato", "modelo",
+                                     "series_con_costo", "wmape_val",
+                                     "bias_val", "D"])
+    resultado = pd.concat(filas, ignore_index=True)
+    columnas = ["dimension", "estrato", "modelo", "series_con_costo",
+                "cobertura_series", "demanda_valorizada", "error_valorizado",
+                "wmape_val", "bias_val", "rmse_val", "D"]
+    return resultado[[c for c in columnas if c in resultado.columns]]
+
+
 def tabla_valorizada(suite: pd.DataFrame) -> pd.DataFrame:
     """La compañera valorizada de la Tabla 8, ordenada por la métrica de decisión."""
     columnas = {

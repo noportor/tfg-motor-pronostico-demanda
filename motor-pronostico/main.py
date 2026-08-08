@@ -596,6 +596,52 @@ def comando_ejecutar(cfg) -> int:
     )
     _fin(inicio)
 
+    # --- Estratos declarados (los usan el paso 9, el 10b y las figuras) -----
+    # Dos dimensiones: el régimen ADI-CV² de cada serie (entrenamiento) y el
+    # tipo de categoría — estacional si concentra >50 % del valor de
+    # entrenamiento en nov-feb (la MISMA regla de la Figura 1, derivada de los
+    # datos y no de una lista a mano).
+    regimen_por_serie = unidad_analisis.clasificar_regimen(
+        panel_ajuste_largo.loc[
+            panel_ajuste_largo["periodo"] <= cfg.particion.fin_entrenamiento
+        ]
+    )["cuadrante"]
+    estratos: dict[str, pd.Series] = {"regimen_adi_cv2": regimen_por_serie}
+
+    perfil_categorias = None
+    estacionales: tuple[str, ...] = ()
+    if maestro.disponible and "categoria" in df.columns:
+        periodo_crudo = df["fecha"].dt.to_period("M")
+        serie_crudo = (df["sku"].astype(str) + "|" + df["canal"].astype(str)
+                       + "|" + df["regional"].astype(str))
+        valor_crudo = df["cantidad"] * serie_crudo.map(maestro.costo_por_serie)
+        en_train = periodo_crudo <= cfg.particion.fin_entrenamiento
+        perfil_categorias = (
+            pd.DataFrame({
+                "categoria": df.loc[en_train, "categoria"],
+                "mes": df.loc[en_train, "fecha"].dt.month,
+                "valor": valor_crudo.loc[en_train],
+            })
+            .dropna(subset=["categoria", "valor"])
+            .groupby(["categoria", "mes"], observed=True)["valor"].sum()
+            .reset_index()
+        )
+        if len(perfil_categorias):
+            perfil_categorias["pct"] = (
+                100 * perfil_categorias["valor"]
+                / perfil_categorias.groupby("categoria", observed=True)["valor"]
+                .transform("sum")
+            )
+            nov_feb = (
+                perfil_categorias.loc[perfil_categorias["mes"].isin([11, 12, 1, 2])]
+                .groupby("categoria", observed=True)["pct"].sum()
+            )
+            estacionales = tuple(sorted(nov_feb.index[nov_feb > 50].astype(str)))
+        if exogenas.categoria_por_serie is not None:
+            estratos["tipo_de_categoria"] = exogenas.categoria_por_serie.map(
+                lambda c: "estacional" if c in estacionales else "recurrente"
+            )
+
     # --- 9. Métricas --------------------------------------------------------
     inicio = _paso(f"9/{total}", "Métricas por serie sobre el bloque de prueba")
     escala = mae_naive_entrenamiento(panel_entrenamiento)
@@ -640,6 +686,19 @@ def comando_ejecutar(cfg) -> int:
         reporte.tabla("tabla_valorizada.csv", metricas.tabla_valorizada(suite_val))
         reporte.nota("valorizado", suite_val)
         artefactos_metricas.append("tabla_valorizada.csv")
+
+        # La lectura por estrato: ¿de dónde viene la ventaja de cada brazo?
+        por_estrato = metricas.suite_valorizada_por_estrato(
+            errores, maestro.costo_por_serie, estratos, orden=orden
+        )
+        reporte.tabla("estratos_valorizados.csv", por_estrato)
+        artefactos_metricas.append("estratos_valorizados.csv")
+        notas_metricas.append(
+            "estratos_valorizados.csv repite la suite D dentro de cada "
+            "régimen ADI-CV² y de cada tipo de categoría (estacional = >50 % "
+            "del valor de entrenamiento en nov-feb, regla derivada de los "
+            "datos): la misma vara, partida donde la lectura importa."
+        )
         conteos_metricas["cobertura_de_costo"] = round(
             float(suite_val["cobertura_series"].iloc[0]), 4
         )
@@ -770,12 +829,15 @@ def comando_ejecutar(cfg) -> int:
         elegido = motor.informe.seleccion.set_index("serie")["modelo_elegido"]
         resultado_mh = multihorizonte.evaluar(
             cfg, modelos, elegido, panel, panel_real, panel_entrenamiento,
-            cohorte_ajustada, maestro.costo_por_serie, exogenas,
+            cohorte_ajustada, maestro.costo_por_serie, exogenas, estratos,
         )
         for linea in resultado_mh.informe.lineas():
             print("      " + linea)
         reporte.tabla("multihorizonte_horizonte.csv", resultado_mh.resumen_horizonte)
         reporte.tabla("multihorizonte_origen.csv", resultado_mh.resumen_origen)
+        if not resultado_mh.resumen_estratos.empty:
+            reporte.tabla("multihorizonte_estratos.csv",
+                          resultado_mh.resumen_estratos)
         reporte.nota("multihorizonte", {
             "origenes": resultado_mh.informe.origenes,
             "horizonte_maximo": resultado_mh.informe.horizonte_maximo,
@@ -809,7 +871,11 @@ def comando_ejecutar(cfg) -> int:
                     for m, d in resultado_mh.informe.d_global.items()
                 },
             },
-            artefactos=["multihorizonte_horizonte.csv", "multihorizonte_origen.csv"],
+            artefactos=(
+                ["multihorizonte_horizonte.csv", "multihorizonte_origen.csv"]
+                + (["multihorizonte_estratos.csv"]
+                   if not resultado_mh.resumen_estratos.empty else [])
+            ),
             notas=[
                 "Protocolo SEPARADO del principal (RN-4): la Tabla 8 y el "
                 "contraste siguen siendo a un paso; esta etapa mide quién "
@@ -835,34 +901,15 @@ def comando_ejecutar(cfg) -> int:
         artefactos_figuras.append(ruta.name)
 
     if maestro.disponible:
-        periodo_crudo = df["fecha"].dt.to_period("M")
         serie_crudo = (df["sku"].astype(str) + "|" + df["canal"].astype(str)
                        + "|" + df["regional"].astype(str))
         valor_crudo = df["cantidad"] * serie_crudo.map(maestro.costo_por_serie)
 
-        # F1 — perfil mensual por categoría (solo entrenamiento).
-        en_train = periodo_crudo <= cfg.particion.fin_entrenamiento
-        perfil = (
-            pd.DataFrame({
-                "categoria": df.loc[en_train, "categoria"],
-                "mes": df.loc[en_train, "fecha"].dt.month,
-                "valor": valor_crudo.loc[en_train],
-            })
-            .dropna(subset=["categoria", "valor"])
-            .groupby(["categoria", "mes"], observed=True)["valor"].sum()
-            .reset_index()
-        )
-        if len(perfil):
-            perfil["pct"] = 100 * perfil["valor"] / perfil.groupby(
-                "categoria", observed=True
-            )["valor"].transform("sum")
-            nov_feb = (
-                perfil.loc[perfil["mes"].isin([11, 12, 1, 2])]
-                .groupby("categoria", observed=True)["pct"].sum()
-            )
-            estacionales = tuple(sorted(nov_feb.index[nov_feb > 50].astype(str)))
+        # F1 — perfil mensual por categoría (perfil y regla de estacionales ya
+        # calculados junto a los estratos, antes del paso 9).
+        if perfil_categorias is not None and len(perfil_categorias):
             _figura(figuras.figura_perfil_categorias(
-                perfil, estacionales,
+                perfil_categorias, estacionales,
                 reporte.directorio / "figura01_perfil_categorias.png", dpi=dpi,
             ))
 
@@ -930,11 +977,6 @@ def comando_ejecutar(cfg) -> int:
     # F13 — casos ilustrativos, elegidos por REGLA declarada (no a dedo):
     # la serie de mayor demanda valorizada de entrenamiento de cada régimen.
     if maestro.disponible and valor_por_serie is not None and len(valor_por_serie):
-        regimen_series = unidad_analisis.clasificar_regimen(
-            panel_ajuste_largo.loc[
-                panel_ajuste_largo["periodo"] <= cfg.particion.fin_entrenamiento
-            ]
-        )
         en_cohorte = set(cohorte_ajustada["serie"].unique())
         valor_cohorte = valor_por_serie.loc[
             valor_por_serie.index.isin(en_cohorte)
@@ -959,10 +1001,10 @@ def comando_ejecutar(cfg) -> int:
                    "Estacional de campaña (mayor valor en CUADERNOS)"),
             _mayor(lambda s: categoria_serie.get(s) == "PAPEL FOTOCOPIA",
                    "Recurrente (mayor valor en PAPEL FOTOCOPIA)"),
-            _mayor(lambda s: regimen_series["cuadrante"].get(s)
+            _mayor(lambda s: regimen_por_serie.get(s)
                    in ("intermitente", "lumpy"),
                    "Demanda esporádica (mayor valor intermitente/lumpy)"),
-            _mayor(lambda s: regimen_series["cuadrante"].get(s) == "erratica",
+            _mayor(lambda s: regimen_por_serie.get(s) == "erratica",
                    "Regular pero volátil (mayor valor errática)"),
         ) if caso is not None]
 

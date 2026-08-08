@@ -442,6 +442,7 @@ class ResultadoMultihorizonte:
     resumen_horizonte: pd.DataFrame
     resumen_origen: pd.DataFrame
     informe: InformeMultihorizonte
+    resumen_estratos: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def _origenes_de(cfg: Config) -> list[pd.Period]:
@@ -465,6 +466,7 @@ def evaluar(
     cohorte_ajustada: pd.DataFrame,
     costo_por_serie: pd.Series,
     exogenas=None,
+    estratos: dict[str, pd.Series] | None = None,
 ) -> ResultadoMultihorizonte:
     """Corre el protocolo multihorizonte completo y agrega la curva D(h).
 
@@ -578,7 +580,24 @@ def evaluar(
         if not np.isnan(fila["D"])
     }
 
+    # La D(h) global partida por estrato: responde de dónde viene el dominio
+    # de cada brazo en el horizonte (¿estacionales, recurrentes, esporádicas?).
+    resumen_estratos = pd.DataFrame()
+    if estratos:
+        piezas = []
+        for dimension, asignacion in estratos.items():
+            etiquetado = con_costo.assign(
+                estrato=con_costo["serie"].map(asignacion)
+                .fillna("sin_clasificar")
+            )
+            piezas.append(
+                agregado_valorizado(etiquetado, ["modelo", "estrato"])
+                .assign(dimension=dimension)
+            )
+        resumen_estratos = pd.concat(piezas, ignore_index=True)
+
     return ResultadoMultihorizonte(
+        resumen_estratos=resumen_estratos,
         resumen_horizonte=resumen_horizonte,
         resumen_origen=resumen_origen,
         informe=informe,
