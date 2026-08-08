@@ -13,8 +13,9 @@ Archivo                        Destino en la tesis
 ``tabla8_resultados.csv``      Tabla 8 — MAE, MAPE, RMSE, Bias por modelo
 ``pruebas_estadisticas.txt``   Apartado «Contraste estadístico de la hipótesis»
 ``seleccion_motor.csv``        Evidencia de la selección por serie
-``figura2_error.png``          Figura 2
-``figura3_dispersion.png``     Figura 3
+``figura01..figura13*.png``    Catálogo de figuras del documento (F9 y F10
+                               viven en sus scripts; sin títulos incrustados:
+                               los epígrafes se escriben en el documento)
 ``manifiesto.json``            Trazabilidad y reproducibilidad
 =============================  ================================================
 
@@ -28,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import pickle
 import platform
 import subprocess
 import sys
@@ -199,6 +201,19 @@ class Reporte:
         self.archivos.append(Path(ruta))
         return Path(ruta)
 
+    def insumos(self, nombre: str, objeto) -> Path:
+        """Persiste los insumos de las figuras (pickle interno de la corrida).
+
+        No es un artefacto del documento: es lo que permite que ``main.py
+        figuras`` redibuje el catálogo en segundos sin re-correr el pipeline.
+        Queda listado y hasheado en el manifiesto como cualquier salida.
+        """
+        ruta = self.directorio / nombre
+        with ruta.open("wb") as archivo:
+            pickle.dump(objeto, archivo, protocol=pickle.HIGHEST_PROTOCOL)
+        self.archivos.append(ruta)
+        return ruta
+
     def nota(self, clave: str, valor) -> None:
         self.notas[clave] = valor
 
@@ -312,6 +327,41 @@ class Reporte:
             encoding="utf-8",
         )
         return ruta
+
+
+def actualizar_manifiesto_figuras(directorio: Path, rutas: list[Path]) -> int:
+    """Re-sella en el manifiesto los hashes de las figuras redibujadas.
+
+    El camino rápido (``main.py figuras``) no re-corre el pipeline: los DATOS
+    de la corrida no cambiaron, pero los PNG sí, y un manifiesto con hashes
+    viejos dejaría de rastrear lo que hay en el disco (RN-6). Se actualizan
+    solo las entradas de las figuras y queda una marca explícita del redibujo.
+    """
+    ruta_manifiesto = directorio / "manifiesto.json"
+    if not ruta_manifiesto.exists():
+        return 0
+    manifiesto = json.loads(ruta_manifiesto.read_text(encoding="utf-8"))
+    por_nombre = {s["archivo"]: s for s in manifiesto.get("salidas", [])}
+    actualizadas = 0
+    for ruta in rutas:
+        datos = {"archivo": ruta.name, "bytes": ruta.stat().st_size,
+                 "sha256": _sha256(ruta)}
+        if ruta.name in por_nombre:
+            por_nombre[ruta.name].update(datos)
+        else:
+            manifiesto.setdefault("salidas", []).append(datos)
+        actualizadas += 1
+    manifiesto["figuras_redibujadas"] = {
+        "en": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "figuras": sorted(ruta.name for ruta in rutas),
+        "nota": "Catálogo redibujado desde insumos_figuras.pkl sin re-correr "
+                "el pipeline: los datos de la corrida no cambiaron.",
+    }
+    ruta_manifiesto.write_text(
+        json.dumps(manifiesto, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return actualizadas
 
 
 def _serializable(objeto):
