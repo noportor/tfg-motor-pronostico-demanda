@@ -398,6 +398,80 @@ def figura_origenes_rodantes(cfg, destino: Path, dpi: int = 300) -> Path:
     return _guardar(figura, destino)
 
 
+def figura_casos(
+    panel_real: pd.DataFrame,
+    predicciones: dict[str, pd.DataFrame],
+    casos: list[tuple[str, str]],
+    inicio_validacion,
+    inicio_prueba,
+    destino: Path,
+    dpi: int = 300,
+    desde=None,
+) -> Path:
+    """F13 — Casos ilustrativos: la realidad con los pronósticos encima.
+
+    Un panel por caso. Los casos NO se eligen a dedo: cada uno es la serie de
+    mayor demanda valorizada de su régimen (la regla va en la etiqueta y en la
+    memoria) — representativos por regla declarada, no por conveniencia. Los
+    pronósticos se dibujan SOLO desde validación: dentro de entrenamiento
+    serían el ajuste in-sample y confundirían la lectura.
+    """
+    _estilo(dpi)
+    n = len(casos)
+    filas = (n + 1) // 2
+    figura, ejes = plt.subplots(
+        filas, 2, figsize=(7.4, 2.6 * filas), squeeze=False, sharex=True
+    )
+
+    estilos = {
+        "motor": dict(color="black", linestyle="--", linewidth=1.3,
+                      marker="o", markersize=2.6),
+        "lightgbm": dict(color="0.35", linestyle="-.", linewidth=1.2,
+                         marker="s", markersize=2.4),
+    }
+    estilo_otro = dict(color="0.6", linestyle=":", linewidth=1.1,
+                       marker="^", markersize=2.4)
+
+    for indice, (serie, etiqueta) in enumerate(casos):
+        eje = ejes[indice // 2][indice % 2]
+        real = panel_real[serie]
+        if desde is not None:
+            real = real.loc[real.index >= desde]
+        meses = real.index
+        eje.plot([m.ordinal for m in meses], real.to_numpy(), color="0.75",
+                 linewidth=1.6, label="real")
+
+        for nombre, panel_pred in predicciones.items():
+            pred = panel_pred[serie].loc[
+                panel_pred.index >= inicio_validacion
+            ]
+            eje.plot([m.ordinal for m in pred.index], pred.to_numpy(),
+                     label=nombre, **estilos.get(nombre, estilo_otro))
+
+        eje.axvline(inicio_validacion.ordinal - 0.5, color="0.3",
+                    linewidth=0.8, linestyle="--")
+        eje.axvspan(inicio_prueba.ordinal - 0.5, meses[-1].ordinal + 0.5,
+                    color="0.93", zorder=0)
+        eje.set_title(etiqueta, fontsize=8.5)
+        marcas = [m for m in meses if m.month == 4][::2]
+        eje.set_xticks([m.ordinal for m in marcas])
+        eje.set_xticklabels([str(m.year) for m in marcas], fontsize=7)
+
+    for sobrante in range(n, filas * 2):
+        ejes[sobrante // 2][sobrante % 2].axis("off")
+
+    manijas, nombres = ejes[0][0].get_legend_handles_labels()
+    figura.legend(manijas, nombres, frameon=False, fontsize=8, ncols=4,
+                  loc="lower center", bbox_to_anchor=(0.5, -0.02))
+    figura.suptitle(
+        "Figura 13. Casos ilustrativos: la serie de mayor demanda valorizada "
+        "de cada régimen\n(pronósticos desde validación; sombreado = prueba)",
+        fontsize=10, x=0.01, ha="left",
+    )
+    figura.tight_layout(rect=(0, 0.03, 1, 1))
+    return _guardar(figura, destino)
+
+
 def figura_busqueda_hiperparametros(
     ensayos: pd.DataFrame, destino: Path, dpi: int = 300
 ) -> Path:

@@ -481,6 +481,32 @@ def comando_ejecutar(cfg) -> int:
     for linea in motor.informe.lineas():
         print("      " + linea)
     reporte.tabla("seleccion_motor.csv", motor.informe.seleccion)
+
+    # --- Persistencia por serie y mes: la realidad + los doce pronósticos ---
+    # Habilita la vista «Series» del visor y la figura de casos: toda la
+    # evidencia del protocolo a un paso queda inspeccionable serie por serie.
+    # Formato ancho (un archivo, una pasada de lectura): meses de ajuste
+    # incluidos (el pronóstico dentro de entrenamiento es el ajuste in-sample,
+    # útil para ver CÓMO aprendió cada modelo; la evaluación sigue siendo solo
+    # validación y prueba).
+    persistencia = panel_real.stack().rename("y_real").reset_index()
+    persistencia.columns = ["periodo", "serie", "y_real"]
+    persistencia["bloque"] = [
+        cfg.bloque_de(p) for p in persistencia["periodo"]
+    ]
+    for nombre in [m for m in cfg.modelos_activos if m in predicciones]:
+        apilado = predicciones[nombre].stack().rename(nombre).reset_index()
+        apilado.columns = ["periodo", "serie", nombre]
+        persistencia = persistencia.merge(
+            apilado, on=["periodo", "serie"], how="left"
+        )
+    persistencia = persistencia.sort_values(
+        ["serie", "periodo"], kind="stable"
+    ).reset_index(drop=True)
+    numericas = persistencia.select_dtypes("number").columns
+    persistencia[numericas] = persistencia[numericas].round(4)
+    reporte.tabla("series_y_predicciones.csv", persistencia)
+
     reporte.etapa(
         "motor", "Motor de selección por serie", rf="RF-6",
         entrada={"candidatos": len(cfg.modelos_candidatos)},
@@ -498,7 +524,13 @@ def comando_ejecutar(cfg) -> int:
             "empates": motor.informe.empates,
             "sin_candidato_valido": motor.informe.respaldos,
         },
-        artefactos=["seleccion_motor.csv"],
+        artefactos=["seleccion_motor.csv", "series_y_predicciones.csv"],
+        notas=[
+            "series_y_predicciones.csv: la realidad y los doce pronósticos a "
+            "un paso, por serie y mes — toda la evidencia del protocolo "
+            "principal, inspeccionable serie por serie (vista «Series» del "
+            "visor y figura de casos).",
+        ],
         duracion_s=time.perf_counter() - inicio,
     )
     _fin(inicio)
@@ -894,6 +926,58 @@ def comando_ejecutar(cfg) -> int:
                         str(cfg.modelos["benchmark_naive"])),
             dpi=dpi,
         ))
+
+    # F13 — casos ilustrativos, elegidos por REGLA declarada (no a dedo):
+    # la serie de mayor demanda valorizada de entrenamiento de cada régimen.
+    if maestro.disponible and valor_por_serie is not None and len(valor_por_serie):
+        regimen_series = unidad_analisis.clasificar_regimen(
+            panel_ajuste_largo.loc[
+                panel_ajuste_largo["periodo"] <= cfg.particion.fin_entrenamiento
+            ]
+        )
+        en_cohorte = set(cohorte_ajustada["serie"].unique())
+        valor_cohorte = valor_por_serie.loc[
+            valor_por_serie.index.isin(en_cohorte)
+        ].sort_values(ascending=False)
+        categoria_serie = (
+            exogenas.categoria_por_serie
+            if exogenas.categoria_por_serie is not None else pd.Series(dtype=str)
+        )
+
+        def _mayor(filtro, etiqueta) -> tuple[str, str] | None:
+            candidatas = [s for s in valor_cohorte.index if filtro(s)]
+            if not candidatas:
+                return None
+            serie = candidatas[0]
+            # SOLO el SKU seudonimizado en el título: esta figura va al
+            # documento publicado y el nombre real de la regional es
+            # información de la empresa (Anexo B).
+            return serie, f"{etiqueta}\n{serie.split('|')[0]}"
+
+        casos = [caso for caso in (
+            _mayor(lambda s: categoria_serie.get(s) == "CUADERNOS",
+                   "Estacional de campaña (mayor valor en CUADERNOS)"),
+            _mayor(lambda s: categoria_serie.get(s) == "PAPEL FOTOCOPIA",
+                   "Recurrente (mayor valor en PAPEL FOTOCOPIA)"),
+            _mayor(lambda s: regimen_series["cuadrante"].get(s)
+                   in ("intermitente", "lumpy"),
+                   "Demanda esporádica (mayor valor intermitente/lumpy)"),
+            _mayor(lambda s: regimen_series["cuadrante"].get(s) == "erratica",
+                   "Regular pero volátil (mayor valor errática)"),
+        ) if caso is not None]
+
+        if casos:
+            _figura(figuras.figura_casos(
+                panel_real,
+                {m: predicciones[m] for m in
+                 ("motor", "lightgbm", cfg.modelos["benchmark_promedio_movil"])
+                 if m in predicciones},
+                casos, cfg.inicio_validacion, cfg.inicio_prueba,
+                reporte.directorio / "figura13_casos.png", dpi=dpi,
+                # Últimas cuatro gestiones antes de validación: la forma se ve
+                # sin comprimir una década en cada panel.
+                desde=cfg.inicio_validacion - 48,
+            ))
 
     # F12 — diagrama de diferencia crítica.
     _figura(figuras.figura4_diferencia_critica(
