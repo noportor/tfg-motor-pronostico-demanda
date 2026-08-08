@@ -35,6 +35,7 @@ SALIDAS_ESPERADAS = (
     "tabla_valorizada.csv",
     "pruebas_estadisticas.txt",
     "seleccion_motor.csv",
+    "series_y_predicciones.csv",
     "unidad_estructura_sku.csv",
     "unidad_contrafactual.csv",
     "multihorizonte_horizonte.csv",
@@ -53,6 +54,7 @@ SALIDAS_ESPERADAS = (
     "figura08_dispersion.png",
     "figura11_horizonte.png",
     "figura12_diferencia_critica.png",
+    "figura13_casos.png",
     "manifiesto.json",
 )
 
@@ -408,6 +410,26 @@ def test_inspeccion_json_refleja_el_informe(corrida):
     for clave in ("rango_fechas", "n_sku", "n_combinaciones",
                   "estacionalidad_mensual", "volumen_por_gestion"):
         assert clave in datos, f"inspeccion.json no tiene '{clave}'"
+
+
+def test_predicciones_persistidas_reproducen_las_metricas(corrida):
+    """Integridad de series_y_predicciones.csv: recomputar el MAE de prueba de
+    una serie desde el CSV debe dar EXACTAMENTE lo que reportó el pipeline.
+    Si divergen, la evidencia inspeccionable no es la evidencia evaluada."""
+    persistido = pd.read_csv(corrida.ruta_salidas / "series_y_predicciones.csv")
+    errores = pd.read_csv(corrida.ruta_salidas / "errores_por_serie.csv")
+
+    prueba = persistido.loc[persistido["bloque"] == "prueba"]
+    assert len(prueba), "El CSV persistido no tiene meses de prueba"
+
+    del_motor = errores.loc[errores["modelo"] == "motor"].set_index("serie")
+    serie = del_motor["mae"].dropna().index[0]
+    filas = prueba.loc[prueba["serie"] == serie].dropna(subset=["y_real", "motor"])
+    mae_recalculado = (filas["motor"] - filas["y_real"]).abs().mean()
+
+    assert mae_recalculado == pytest.approx(
+        float(del_motor.loc[serie, "mae"]), rel=1e-3
+    ), "El CSV persistido no reproduce el MAE reportado (¿redondeo o desfase?)"
 
 
 def test_humo_del_ajuste_de_hiperparametros(corrida, tmp_path):
