@@ -72,10 +72,10 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
         "lightgbm": lambda: ModeloLightGBM(cfg, tabla),
         # --- Brazos ML2 (corrida exploratoria post-documento) ---------------
         # Imports perezosos: el experimento documentado no depende de torch.
-        "dlinear": lambda: _neural(cfg, "dlinear"),
-        "nhits": lambda: _neural(cfg, "nhits"),
-        "deepar": lambda: _neural(cfg, "deepar"),
-        "tft": lambda: _neural(cfg, "tft"),
+        "dlinear": lambda: _neural(cfg, "dlinear", tabla),
+        "nhits": lambda: _neural(cfg, "nhits", tabla),
+        "deepar": lambda: _neural(cfg, "deepar", tabla),
+        "tft": lambda: _neural(cfg, "tft", tabla),
         "chronos": lambda: _fundacional(cfg),
     }
 
@@ -92,9 +92,9 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
     return modelos
 
 
-def _neural(cfg: Config, arquitectura: str):
+def _neural(cfg: Config, arquitectura: str, tabla: pd.DataFrame):
     from .neuronales import ModeloNeural
-    return ModeloNeural(cfg, arquitectura)
+    return ModeloNeural(cfg, arquitectura, tabla)
 
 
 def _fundacional(cfg: Config):
