@@ -22,8 +22,8 @@ from src.modelos.neuronales import _a_largo, _pivotear
 
 def _panel_ancho(n_series: int = 8, n_meses: int = 72) -> pd.DataFrame:
     columnas = {
-        f"SKU-{i:03d}|X|SANTA CRUZ": serie_estacional(n_meses, base=50 + 10 * i,
-                                                      semilla=i)
+        f"SKU-{i:03d}|X|SC": serie_estacional(n_meses, base=50 + 10 * i,
+                                              semilla=i)
         for i in range(n_series)
     }
     indice = pd.period_range("2018-01", periods=n_meses, freq="M")
@@ -132,6 +132,139 @@ def test_mezclador_pesos_composicion_y_guardia():
         Mezclador(_CfgCorta(), "mezcla_pond", predicciones, real).ajustar(
             entrenamiento, validacion
         )
+
+
+def test_mezcla_h_pesos_por_horizonte_composicion_y_guardia():
+    """V5: pesos por candidato × horizonte del abanico de validación (RN-2)."""
+    from src.modelos.mezclador import MezcladorHorizonte
+
+    indice_val = pd.period_range("2024-04", periods=4, freq="M")
+    series = ["S1|X|SC", "S2|X|SC"]
+    real_fan = pd.DataFrame(
+        {"S1|X|SC": [10.0] * 4, "S2|X|SC": [20.0] * 4}, index=indice_val
+    )
+    # A clava los horizontes cortos y yerra los largos; B al revés.
+    fan_a = real_fan.copy()
+    fan_a.iloc[2:] += 10.0
+    fan_b = real_fan.copy()
+    fan_b.iloc[:2] += 10.0
+
+    class _Cfg:
+        particion = _Particion(
+            pd.Period("2024-03", freq="M"),
+            fin_validacion=pd.Period("2024-07", freq="M"),
+        )
+        modelos = {"mezclador": {"candidatos": ["A", "B"]}}
+
+    predicciones = {"A": real_fan.copy(), "B": real_fan + 10.0}
+    costo = pd.Series(1.0, index=series)
+
+    mezcla = MezcladorHorizonte(_Cfg(), predicciones, real_fan, costo)
+    mezcla.ajustar({"A": fan_a, "B": fan_b}, real_fan)
+    pesos = mezcla.pesos_h.div(mezcla.pesos_h.sum(axis=1), axis=0)
+    assert pesos.loc[1, "A"] > 0.99          # D≈0 domina el peso en h=1
+    assert pesos.loc[4, "B"] > 0.99          # ... y B domina en h=4
+
+    # componer aplica el peso de CADA horizonte: fila 1 ≈ A, fila 4 ≈ B.
+    proy_a = pd.DataFrame(
+        {"S1|X|SC": [1.0] * 4, "S2|X|SC": [2.0] * 4}, index=indice_val
+    )
+    proy_b = proy_a + 100.0
+    compuesto = mezcla.componer({"A": proy_a, "B": proy_b})
+    assert compuesto.iloc[0, 0] == pytest.approx(1.0, abs=0.1)
+    assert compuesto.iloc[3, 0] == pytest.approx(101.0, abs=0.1)
+
+    # NaN en el dominante: su peso se redistribuye (no deja hueco).
+    proy_a.iloc[0, 0] = np.nan
+    compuesto = mezcla.componer({"A": proy_a, "B": proy_b})
+    assert compuesto.iloc[0, 0] == pytest.approx(101.0)
+
+    # A un paso aplican los pesos de h=1: la mezcla sigue al candidato A
+    # (10), no al B (20).
+    a_un_paso = mezcla.predecir(real_fan)
+    assert a_un_paso.iloc[0, 0] == pytest.approx(10.0, abs=0.1)
+
+    # RN-2: un abanico que pise la prueba tiene que reventar.
+    indice_largo = pd.period_range("2024-05", periods=4, freq="M")
+    with pytest.raises(ValueError, match="RN-2"):
+        mezcla.ajustar(
+            {"A": fan_a.set_axis(indice_largo), "B": fan_b.set_axis(indice_largo)},
+            real_fan.set_axis(indice_largo),
+        )
+
+    # Candidato declarado sin abanico: error inmediato y claro.
+    with pytest.raises(ValueError, match="sin abanico"):
+        mezcla.ajustar({"A": fan_a}, real_fan)
+
+
+def test_directo_reentrena_por_origen(cfg, monkeypatch):
+    """V5: re-entrena los 12 boosters por origen NUEVO, con árboles congelados
+    y sin ver un solo mes posterior al origen (anti-fuga)."""
+    import lightgbm as lgb
+
+    from src.modelos.lightgbm_directo import ModeloLightGBMDirecto
+
+    fin_ent = cfg.particion.fin_entrenamiento
+    fin_val = cfg.particion.fin_validacion
+    meses = pd.period_range(fin_ent - 23, fin_val + 3, freq="M")
+    tabla = pd.DataFrame({
+        "serie": ["A|X|SC"] * len(meses),
+        "periodo": meses,
+        "y": np.arange(len(meses), dtype=float),
+    })
+    modelo = ModeloLightGBMDirecto(cfg, tabla)
+    for columna in modelo.columnas:
+        if columna not in tabla.columns:
+            tabla[columna] = 0.0
+
+    class _BoosterFalso:
+        best_iteration = 7
+
+        def predict(self, datos, num_iteration=None):
+            return np.zeros(len(datos))
+
+    horizontes = range(1, modelo.horizonte + 1)
+    modelo.boosters = {h: _BoosterFalso() for h in horizontes}
+    modelo.mejor_iteracion = {h: 7 for h in horizontes}
+    modelo._parametros = {"objective": "regression"}
+    modelo._fin_ajuste = fin_ent
+    modelo.reentrenar_por_origen = True
+
+    llamadas: list[tuple[int, float]] = []
+
+    class _DatasetFalso:
+        def __init__(self, datos, label=None, **kw):
+            self.label = np.asarray(label, dtype=float)
+
+    def _entrenar_falso(params, conjunto, num_boost_round=None, **kw):
+        llamadas.append((num_boost_round, float(np.nanmax(conjunto.label))))
+        return _BoosterFalso()
+
+    monkeypatch.setattr(lgb, "Dataset", _DatasetFalso)
+    monkeypatch.setattr(lgb, "train", _entrenar_falso)
+
+    def _historia(hasta):
+        idx = pd.period_range(meses[0], hasta, freq="M")
+        return pd.DataFrame(
+            {"A|X|SC": np.arange(len(idx), dtype=float)}, index=idx
+        )
+
+    # Origen sin meses nuevos (== fin del ajuste base): NO re-entrena.
+    modelo.proyectar_directo(_historia(fin_ent), 3)
+    assert llamadas == [] and modelo.reentrenos == 0
+
+    # Origen nuevo: un booster por horizonte, árboles congelados (7), y
+    # ningún objetivo posterior al origen (la y es el índice del mes).
+    y_en_origen = float(meses.get_loc(fin_val))
+    modelo.proyectar_directo(_historia(fin_val), 3)
+    assert len(llamadas) == modelo.horizonte
+    assert all(n == 7 for n, _ in llamadas)
+    assert all(maximo == y_en_origen for _, maximo in llamadas)
+    assert modelo.reentrenos == modelo.horizonte
+
+    # Mismo origen otra vez: la caché evita repetir el trabajo.
+    modelo.proyectar_directo(_historia(fin_val), 3)
+    assert len(llamadas) == modelo.horizonte
 
 
 def test_directo_alinea_objetivo_sin_fuga(cfg):
