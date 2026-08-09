@@ -64,10 +64,10 @@ class _Particion:
 class _CfgStub:
     """Lo mínimo que ModeloNeural consulta de la configuración."""
 
-    def __init__(self, fin_entrenamiento: pd.Period):
+    def __init__(self, fin_entrenamiento: pd.Period, neuronales: dict | None = None):
         self.particion = _Particion(fin_entrenamiento)
         self.modelos = {
-            "neuronales": {
+            "neuronales": neuronales if neuronales is not None else {
                 "semilla": 20260408,
                 "horizonte": 6,
                 "input_size": 12,
@@ -80,6 +80,39 @@ class _CfgStub:
                 },
             },
         }
+
+
+@pytest.mark.ml2
+def test_perdida_tweedie_y_exogenas_estaticas():
+    """V2: la pérdida Tweedie se construye y las estáticas se codifican."""
+    pytest.importorskip("neuralforecast")
+    from src.modelos.neuronales import ModeloNeural
+
+    cfg = _CfgStub(pd.Period("2024-03", freq="M"), neuronales={
+        "tweedie_rho": 1.465,
+        "tft": {
+            "perdida": "tweedie",
+            "exogenas": {"mes": True, "estaticas": ["categoria", "canal"]},
+        },
+    })
+    tabla = pd.DataFrame({
+        "serie": ["A|X|SC", "A|X|SC", "B|Z|LP"],
+        "categoria": ["CUADERNOS", "CUADERNOS", "PAPELES"],
+        "canal": ["X", "X", "Z"],
+    })
+    modelo = ModeloNeural(cfg, "tft", tabla)
+
+    assert type(modelo._perdida()).__name__ == "DistributionLoss"
+    assert modelo.usar_mes
+
+    estaticas = modelo._armar_static_df()
+    assert list(estaticas.columns) == ["unique_id", "categoria", "canal"]
+    assert len(estaticas) == 2                      # una fila por serie
+    assert estaticas["categoria"].dtype == "int64"  # codificadas, no texto
+
+    # Sin tabla no puede haber estáticas: el error debe ser inmediato y claro.
+    with pytest.raises(ValueError, match="tabla de features"):
+        ModeloNeural(cfg, "tft", None)
 
 
 @pytest.mark.ml2

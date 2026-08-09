@@ -43,12 +43,23 @@ class ModeloChronos:
         self.checkpoint = str(parametros.get("checkpoint", "amazon/chronos-bolt-base"))
         self.contexto_maximo = int(parametros.get("contexto_maximo", 96))
         self.lote = int(parametros.get("lote", 256))
+        self.calibrar = bool(parametros.get("calibrar", False))
         self.pipeline = None
+        self.factor = 1.0
 
     # -- interfaz común ------------------------------------------------------
 
     def ajustar(self, entrenamiento: pd.DataFrame, validacion: pd.DataFrame) -> None:
-        """Carga los pesos publicados. Cero-shot: no entrena ni mira validación."""
+        """Carga los pesos publicados y, si se pide, calibra el sesgo.
+
+        La calibración (V2) es un único factor multiplicativo global estimado
+        SOBRE VALIDACIÓN con el mismo protocolo a un paso: la V1 midió que el
+        modelo fundacional acierta en magnitud (WMAPE competitivo) pero
+        subestima sistemáticamente; corregir ese nivel con un escalar es la
+        intervención mínima que no toca los pesos ni re-entrena nada. Es un
+        uso de validación análogo a la parada temprana: fija UNA constante,
+        no qué predecir; y la prueba queda intacta (RN-2).
+        """
         import torch
         from chronos import BaseChronosPipeline
 
@@ -58,6 +69,21 @@ class ModeloChronos:
             device_map=dispositivo,
             torch_dtype=torch.bfloat16 if dispositivo == "cuda" else torch.float32,
         )
+        if self.calibrar:
+            historia_total = pd.concat([entrenamiento, validacion])
+            reales = 0.0
+            predichos = 0.0
+            for mes in validacion.index:
+                historia = historia_total.loc[historia_total.index < mes]
+                abanico = self._abanico(historia, horizonte=1)
+                if mes not in abanico.index:
+                    continue
+                y = validacion.loc[mes]
+                p = abanico.loc[mes].reindex(y.index)
+                comparable = y.notna() & p.notna()
+                reales += float(y[comparable].sum())
+                predichos += float(p[comparable].sum())
+            self.factor = reales / predichos if predichos > 0 else 1.0
 
     def _abanico(self, historia: pd.DataFrame, horizonte: int) -> pd.DataFrame:
         """Media pronosticada h=1..``horizonte`` para cada serie del panel."""
@@ -88,7 +114,7 @@ class ModeloChronos:
 
         origen = historia.index[-1]
         meses = pd.period_range(origen + 1, origen + horizonte, freq="M")
-        abanico = pd.DataFrame(medias, index=meses, columns=series)
+        abanico = pd.DataFrame(medias * self.factor, index=meses, columns=series)
         return abanico.reindex(columns=historia.columns)
 
     def predecir(self, datos: pd.DataFrame) -> pd.DataFrame:
