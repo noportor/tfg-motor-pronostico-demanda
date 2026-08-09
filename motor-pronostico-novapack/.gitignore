@@ -49,3 +49,6 @@ credentials*
 # Visor (SPA): dependencias y build no se versionan.
 visor/node_modules/
 visor/dist/
+
+# Artefactos de entrenamiento de pytorch-lightning (corridas ML2)
+lightning_logs/
