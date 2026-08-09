@@ -1,0 +1,19 @@
+# Stack de la corrida exploratoria ML2 (brazos neuronales y fundacional).
+# Se instala ENCIMA de requirements.txt; el experimento documentado no lo usa.
+#
+# torch con CUDA 12.8: las GPU RTX 50xx (Blackwell, sm_120) no funcionan con
+# los wheels cu12.1/cu12.4 — instalar con:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+#
+# CONVIVENCIA DECLARADA: utilsforecast 0.2.16 declara pandas<3 pero funciona
+# con el pandas 3.0.2 pineado por requirements.txt (verificado por la suite:
+# el descarte de NaN de stack() se hace explícito en src/modelos/neuronales.py
+# porque pandas 3 cambió ese default). Si una futura versión rompe, pinear
+# pandas 2.3.x SOLO para corridas ML2 y declararlo en el manifiesto.
+
+torch==2.11.0+cu128
+neuralforecast==3.2.1
+chronos-forecasting==2.3.1
+pytorch-lightning==2.5.6
+utilsforecast==0.2.16
+coreforecast==0.0.18

@@ -70,6 +70,13 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
             alfas=cfg.modelos.get("croston", {}).get("alfa_rejilla")
         ),
         "lightgbm": lambda: ModeloLightGBM(cfg, tabla),
+        # --- Brazos ML2 (corrida exploratoria post-documento) ---------------
+        # Imports perezosos: el experimento documentado no depende de torch.
+        "dlinear": lambda: _neural(cfg, "dlinear"),
+        "nhits": lambda: _neural(cfg, "nhits"),
+        "deepar": lambda: _neural(cfg, "deepar"),
+        "tft": lambda: _neural(cfg, "tft"),
+        "chronos": lambda: _fundacional(cfg),
     }
 
     modelos: dict[str, object] = {}
@@ -83,6 +90,16 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
             )
         modelos[nombre] = disponibles[nombre]()
     return modelos
+
+
+def _neural(cfg: Config, arquitectura: str):
+    from .neuronales import ModeloNeural
+    return ModeloNeural(cfg, arquitectura)
+
+
+def _fundacional(cfg: Config):
+    from .fundacional import ModeloChronos
+    return ModeloChronos(cfg)
 
 
 def _rejilla_alfa(configuracion: dict) -> list[float]:
