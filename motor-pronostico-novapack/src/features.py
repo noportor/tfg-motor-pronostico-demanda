@@ -63,6 +63,10 @@ def nombres_de_features(cfg: Config) -> list[str]:
         nombres += ["tc_rezago_1", "tc_delta_pct"]
     if v2.get("categoria"):
         nombres += ["categoria"]
+    # V6: calendario comercial declarado — al final, para no mover el orden
+    # de las columnas existentes entre generaciones (RN-5).
+    if cfg.features.calendario:
+        nombres += ["temporada_alta", "meses_a_clases"]
     return nombres
 
 
@@ -253,6 +257,43 @@ def construir_features(
             tabla["categoria"] = (
                 tabla["serie"].map(mapa_categoria).astype("category")
             )
+
+    # --- Features V6: calendario comercial declarado ------------------------
+    # Deterministas del calendario y de la categoría: no usan NINGUNA
+    # observación (RN-3 trivial) y son conocidas a cualquier horizonte — en el
+    # multihorizonte se computan para los meses futuros sin persistencia ni
+    # supuesto alguno. El calendario es una decisión de DOMINIO declarada en
+    # la configuración (informante del área) y verificada contra el bloque de
+    # entrenamiento, no minada de los datos.
+    calendario = cfg.features.calendario or {}
+    if calendario:
+        mes_calendario_v6 = pd.Series(
+            pd.PeriodIndex(tabla["periodo"]).month, index=tabla.index
+        )
+        inicio_clases = int(calendario.get("inicio_clases_mes", 2))
+        # Cuenta regresiva circular al inicio de clases: 0 en el mes de inicio,
+        # 1 el mes anterior, ... 11 el mes siguiente.
+        tabla["meses_a_clases"] = (
+            (inicio_clases - mes_calendario_v6) % 12
+        ).astype(float)
+
+        temporadas = calendario.get("temporadas", {}) or {}
+        mapa_categoria = getattr(exogenas, "categoria_por_serie", None)
+        if mapa_categoria is None:
+            # Sin el maestro de categorías no se puede saber la temporada:
+            # «sin dato» declarado, nunca un cero inventado.
+            tabla["temporada_alta"] = np.nan
+        else:
+            categoria_serie = tabla["serie"].map(mapa_categoria)
+            temporada = pd.Series(0.0, index=tabla.index)
+            for categoria_t, meses_t in temporadas.items():
+                meses_set = {int(m) for m in meses_t}
+                temporada[
+                    (categoria_serie == categoria_t)
+                    & mes_calendario_v6.isin(meses_set)
+                ] = 1.0
+            temporada[categoria_serie.isna()] = np.nan
+            tabla["temporada_alta"] = temporada
 
     # --- Categóricas --------------------------------------------------------
     # Se dejan como `category` de pandas: LightGBM las consume nativamente sin

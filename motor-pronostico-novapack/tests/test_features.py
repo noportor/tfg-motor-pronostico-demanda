@@ -340,3 +340,76 @@ def test_la_tendencia_no_depende_de_valores_futuros(cfg):
     pd.testing.assert_series_equal(original["tendencia"], modificado["tendencia"])
     assert original["tendencia"].iloc[0] == 0
     assert original["tendencia"].is_monotonic_increasing
+
+
+def test_calendario_comercial_declarado(cfg):
+    """V6: temporada por categoria x mes y cuenta regresiva a clases.
+
+    Ambas features son deterministas del calendario: no usan NINGUNA
+    observacion (la prueba altera `y` y exige igualdad exacta) y son
+    computables para meses futuros sin persistencia.
+    """
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    features_cal = replace(cfg.features, calendario={
+        "inicio_clases_mes": 2,
+        "temporadas": {
+            "CUADERNOS": [12, 1, 2],
+            "PLASTICOS": [10, 11, 12],
+        },
+    })
+    cfg_cal = replace(cfg, features=features_cal)
+
+    valores = serie_estacional(24)  # 2017-04 .. 2019-03
+    panel = panel_de({"CUAD-1": valores, "FOTO-1": valores})
+    exogenas = SimpleNamespace(categoria_por_serie={
+        "CUAD-1|CANAL-1|REGIONAL-A": "CUADERNOS",
+        "FOTO-1|CANAL-1|REGIONAL-A": "PAPEL FOTOCOPIA",
+    })
+    tabla = (
+        construir_features(panel, cfg_cal, exogenas)
+        .sort_values(["serie", "periodo"]).reset_index(drop=True)
+    )
+    assert {"temporada_alta", "meses_a_clases"} <= set(tabla.columns)
+
+    cuadernos = tabla[tabla["serie"] == "CUAD-1|CANAL-1|REGIONAL-A"]
+    fila = cuadernos.set_index(
+        cuadernos["periodo"].astype(str)
+    )
+
+    # CUADERNOS: temporada en dic-ene-feb, fuera en marzo y octubre.
+    assert fila.loc["2017-12", "temporada_alta"] == 1.0
+    assert fila.loc["2018-01", "temporada_alta"] == 1.0
+    assert fila.loc["2018-02", "temporada_alta"] == 1.0
+    assert fila.loc["2018-03", "temporada_alta"] == 0.0
+    assert fila.loc["2017-10", "temporada_alta"] == 0.0
+
+    # FOTOCOPIA no esta en el calendario: nunca temporada (venta regular).
+    fotocopia = tabla[tabla["serie"] == "FOTO-1|CANAL-1|REGIONAL-A"]
+    assert (fotocopia["temporada_alta"] == 0.0).all()
+
+    # Cuenta regresiva circular al inicio de clases (febrero).
+    assert fila.loc["2018-02", "meses_a_clases"] == 0.0
+    assert fila.loc["2018-01", "meses_a_clases"] == 1.0
+    assert fila.loc["2017-12", "meses_a_clases"] == 2.0
+    assert fila.loc["2018-03", "meses_a_clases"] == 11.0
+
+    # RN-3 trivial y verificada: alterar la demanda no mueve el calendario.
+    alterado = [v * 1000.0 for v in valores]
+    panel2 = panel_de({"CUAD-1": alterado, "FOTO-1": alterado})
+    tabla2 = (
+        construir_features(panel2, cfg_cal, exogenas)
+        .sort_values(["serie", "periodo"]).reset_index(drop=True)
+    )
+    pd.testing.assert_series_equal(
+        tabla["temporada_alta"], tabla2["temporada_alta"]
+    )
+    pd.testing.assert_series_equal(
+        tabla["meses_a_clases"], tabla2["meses_a_clases"]
+    )
+
+    # Serie sin categoria conocida: NaN declarado, nunca cero inventado.
+    exogenas_sin = SimpleNamespace(categoria_por_serie={})
+    tabla3 = construir_features(panel, cfg_cal, exogenas_sin)
+    assert tabla3["temporada_alta"].isna().all()

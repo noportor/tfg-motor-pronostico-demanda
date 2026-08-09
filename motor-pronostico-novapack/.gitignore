@@ -52,3 +52,7 @@ visor/dist/
 
 # Artefactos de entrenamiento de pytorch-lightning (corridas ML2)
 lightning_logs/
+
+# Registros de consola de las corridas: la trazabilidad vive en el
+# manifiesto de cada `salidas_*/`, no en el volcado del terminal.
+corrida_*.log

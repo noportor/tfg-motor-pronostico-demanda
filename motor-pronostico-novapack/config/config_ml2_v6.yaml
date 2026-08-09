@@ -1,0 +1,236 @@
+# =============================================================================
+# CORRIDA EXPLORATORIA ML2 — V6: el calendario comercial declarado
+# =============================================================================
+# La V5 y el blindaje cerraron la vía de arquitectura/ponderación: lo que
+# queda con techo real son DATOS. La V6 abre la primera palanca de datos: el
+# calendario comercial del negocio como features deterministas.
+#
+# El calendario viene del DOMINIO (informante del área, 2026-08-09) y se
+# verificó contra el bloque de entrenamiento (participación del valor anual
+# por mes calendario, train 2017-04..2024-03):
+#
+#   - PLASTICOS: temporada alta de fin de año oct-dic (medido: nov 11,0 % +
+#     dic 16,5 % del valor anual; oct 8,6 % — el arranque comercial).
+#   - Campaña escolar (clases inician en FEBRERO): CUADERNOS dic-feb (19,9 +
+#     41,2 + 24,3 = 85,4 % del valor anual), ESCRITURA Y TRAZADO dic-feb
+#     (64,2 %), PAPELES un pico suave dic-ene (10,7 + 11,0 %).
+#   - PAPEL FOTOCOPIA: venta regular todo el año (7,6-9,8 % por mes) — SIN
+#     temporada, y esa ausencia también es información.
+#
+# Dos features nuevas, ambas deterministas del calendario (RN-3 trivial:
+# no usan ninguna observación) y CONOCIDAS a cualquier horizonte (en el
+# multihorizonte se computan para los meses futuros sin persistencia):
+#
+#   1. temporada_alta: 1 si (categoría, mes) está en el calendario declarado.
+#      Le da al modelo global el cruce categoría × temporada EXPLÍCITO, que
+#      hoy debe aprender solo desde sku/mes con la historia de cada serie.
+#   2. meses_a_clases: cuenta regresiva circular al inicio de clases (feb=0,
+#      ene=1, dic=2, ..., mar=11) — la rampa de la campaña como distancia.
+#
+# Afectan a lightgbm y lightgbm_directo (las redes son univariantes/estáticas
+# y Chronos cero-shot); las mezclas y el motor heredan. Hiperparámetros del
+# campeón CONGELADOS (no se re-buscan con las features nuevas: se mide el
+# aporte marginal de la información, no una re-optimización — declarado).
+# Todo lo demás queda EXACTO a la V5. V1-V5 y el blindaje intactos.
+# =============================================================================
+
+datos:
+  archivo: "datos/crudo/ventas_novapack.csv"
+  columnas:
+    fecha: "fecha"
+    sku: "sku"
+    canal: "canal"
+    regional: "regional"
+    cantidad: "cantidad"
+    categoria: "categoria"
+    precio: "precio"
+    perdidas: "perdidas"
+  separador: ","
+  codificacion: "utf-8"
+
+periodo:
+  mes_inicio_gestion: 4
+  inicio: "2017-04"
+  fin: "2026-03"
+
+poblacion:
+  categorias:
+    - "PLASTICOS"
+    - "PAPELES"
+    - "PAPEL FOTOCOPIA"
+    - "ESCRITURA Y TRAZADO"
+    - "CUADERNOS"
+
+particion:
+  fin_entrenamiento: "2024-03"
+  fin_validacion: "2025-03"
+
+series:
+  devoluciones: "descartar"
+  rellenar_ceros_intermedios: true
+
+evento_exogeno:
+  nombre: "covid19"
+  desde: "2020-03"
+  hasta: "2021-02"
+  tratamiento: "copiar_gestion_previa"
+
+inclusion:
+  historial_minimo_meses: 36
+  proporcion_maxima_ceros: 0.70
+  volumen_minimo_unidades: 50
+
+modelos:
+  activos:
+    - naive_m1
+    - naive_m1_gf
+    - ma_2
+    - ma_2_gf
+    - ma_12
+    - ma_12_gf
+    - exp_smooth_opt
+    - holt_winters
+    - croston
+    - lightgbm
+    # --- brazos ML2 ---
+    - lightgbm_directo
+    - dlinear
+    - nhits
+    - tft
+    - chronos
+    # --- segunda etapa (usan los pronósticos de los demás) ---
+    - mezcla_prom
+    - mezcla_pond
+    - mezcla_h
+    - motor
+
+  benchmark_promedio_movil: "ma_12"
+  benchmark_naive: "naive_m1"
+
+  exp_smooth:
+    alfa_min: 0.05
+    alfa_max: 0.95
+    alfa_paso: 0.05
+
+  holt_winters:
+    periodo_estacional: 12
+    alfa_rejilla: [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+    beta_rejilla: [0.0, 0.05, 0.1, 0.2]
+    gamma_rejilla: [0.0, 0.05, 0.1, 0.2]
+
+  croston:
+    alfa_rejilla: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+
+  lightgbm:
+    objective: "tweedie"
+    tweedie_variance_power: 1.464977652919245
+    metric: "tweedie"
+    learning_rate: 0.05310654167584386
+    num_leaves: 137
+    min_data_in_leaf: 61
+    feature_fraction: 0.5778124801487501
+    bagging_fraction: 0.870285300844084
+    bagging_freq: 1
+    lambda_l2: 24.468189902436567
+    num_boost_round: 3000
+    early_stopping_rounds: 100
+    seed: 20260406
+    num_threads: 1
+    deterministic: true
+    force_row_wise: true
+    verbosity: -1
+
+  # --- Brazos neuronales (neuralforecast) ------------------------------------
+  # Config idéntica a la V4: las mejores MEDIDAS en prueba de cada arquitectura
+  # (la búsqueda V3 no transfirió por el quiebre de régimen del pliegue).
+  neuronales:
+    semilla: 20260408
+    horizonte: 12
+    input_size: 24
+    max_steps: 1500
+    tweedie_rho: 1.464977652919245
+    dlinear:
+      perdida: "mae"
+      moving_avg_window: 13
+    nhits:
+      perdida: "mae"
+    tft:
+      perdida: "tweedie"
+      hidden_size: 64
+      exogenas:
+        mes: true
+        estaticas: ["categoria", "canal", "regional"]
+
+  # --- Brazo fundacional (Chronos-Bolt) --------------------------------------
+  chronos:
+    checkpoint: "amazon/chronos-bolt-base"
+    contexto_maximo: 96
+    lote: 256
+    calibrar: "categoria"
+
+  # --- Mezcladores ------------------------------------------------------------
+  # El MISMO menú curado de la V4 para los tres mezcladores: la comparación
+  # prom vs pond vs h aísla la REGLA de pesos, no el menú. Sin lightgbm_directo
+  # (a un paso duplica a lightgbm y sesgaría el promedio; compite solo, como
+  # especialista del horizonte). Sin brazos colapsados.
+  mezclador:
+    candidatos:
+      - lightgbm
+      - chronos
+      - exp_smooth_opt
+      - holt_winters
+      - tft
+
+  motor_regla: "mae_mas_bias"
+  motor_seleccion: "multihorizonte"
+
+features:
+  rezagos: [1, 2, 3, 6, 12]
+  ventanas_moviles: [3, 6, 12]
+  incluir_mes: true
+  incluir_anio: true
+  incluir_tendencia: true
+  categoricas: ["sku", "canal", "regional"]
+  v2:
+    categoria: true
+    precio: true
+    perdidas: true
+    quiebres: true
+    tipo_cambio: true
+    derivadas: true
+  tc_regimen_fijo: 6.96
+  archivo_quiebres: "datos/crudo/quiebres.csv"
+  archivo_tipo_cambio: "datos/crudo/tipo_cambio.csv"
+  # V6: calendario comercial del negocio (dominio verificado en train — ver
+  # cabecera). Determinista: conocido a cualquier horizonte.
+  calendario:
+    inicio_clases_mes: 2
+    temporadas:
+      PLASTICOS: [10, 11, 12]
+      CUADERNOS: [12, 1, 2]
+      "ESCRITURA Y TRAZADO": [12, 1, 2]
+      PAPELES: [12, 1]
+
+multihorizonte:
+  activo: true
+  horizonte_maximo: 12
+  origenes: "rodantes"
+  reentrenar_lightgbm: true
+  # V5: el directo también re-entrena por origen (árboles congelados del
+  # ajuste base por horizonte) — separa recursión de re-entrenamiento.
+  reentrenar_directo: true
+
+pruebas:
+  alfa: 0.05
+  alternativa: "less"
+  metrica_contraste: "error_compuesto_unidades"
+  shapiro_n_maximo: 5000
+  semilla: 20260406
+
+figuras:
+  dpi: 300
+  escala_grises: true
+  formato: "png"
+
+salidas:
+  directorio: "salidas_ml2_v6"
