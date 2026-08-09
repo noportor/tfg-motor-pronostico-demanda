@@ -1,0 +1,235 @@
+# =============================================================================
+# CORRIDA V7-BLINDAJE — el menú anti-régimen sobre el protocolo desplazado
+# =============================================================================
+# La gemela de config_ml2_v7.yaml en el año de quiebre (prueba g2025): mismo
+# cambio ÚNICO respecto de la línea base del blindaje — el menú del mezclador
+# suma nhits (contrapeso de sesgo negativo) y naive_m1 (adaptividad pura).
+# Acá es donde la hipótesis se juega de verdad: en el blindaje base la mezcla
+# cayó a 90,2 porque todo el menú sobre-pronosticaba; si la diversidad de
+# sesgo protege, la mezcla V7 tiene que recortar esa caída sin regalar el año
+# normal (eso lo mide la gemela). Encabezado original del blindaje debajo.
+# =============================================================================
+# (línea base) CORRIDA DE BLINDAJE — protocolo desplazado UN AÑO hacia atrás
+# =============================================================================
+# La limitación declarada del contraste es que hay UN solo corte de prueba
+# (g2026). Esta corrida repite el protocolo ÍNTEGRO con la partición corrida
+# un año: train hasta g2023, validación g2024, prueba g2025 — y el histórico
+# recortado en 2025-03 para que ningún dato posterior exista siquiera en el
+# panel. Pregunta: ¿el ranking del estudio (mezcla_prom récord a un paso,
+# LightGBM recursivo dueño del horizonte, los negativos del directo y de la
+# ponderación) sobrevive en OTRO año de prueba?
+#
+# El año desplazado es además el más hostil disponible: g2025 contiene el
+# arranque de la crisis cambiaria con train/validación casi íntegros
+# pre-crisis — la prueba de estrés que g2026 no podía dar.
+#
+# DECLARACIONES (sin re-optimizar nada):
+# - Los hiperparámetros CONGELADOS (LightGBM del fold g2024, TFT config V2,
+#   N-HiTS config V1, Chronos calibrado por categoría) se reusan tal cual:
+#   la pregunta es si el SISTEMA CONFIGURADO aguanta otro año, no si sus
+#   búsquedas se repiten. Ninguna de esas decisiones miró meses de g2025
+#   como prueba (la búsqueda del campeón usó datos <= 2024-03; las configs
+#   de las redes y del fundacional se eligieron midiendo g2026, disjunto).
+# - Lo que el pipeline estima EN validación (parada temprana, factores de
+#   Chronos, selección del motor, pesos de las mezclas) se re-estima solo,
+#   ahora sobre g2024 — el protocolo es el mismo, corrido de lugar.
+# - Las secciones *_tuning quedan como referencia histórica: acá NO se corre
+#   ninguna búsqueda.
+# V1-V5 intactas. Salidas en salidas_ml2_blindaje/.
+# =============================================================================
+
+datos:
+  archivo: "datos/crudo/ventas_novapack.csv"
+  columnas:
+    fecha: "fecha"
+    sku: "sku"
+    canal: "canal"
+    regional: "regional"
+    cantidad: "cantidad"
+    categoria: "categoria"
+    precio: "precio"
+    perdidas: "perdidas"
+  separador: ","
+  codificacion: "utf-8"
+
+periodo:
+  mes_inicio_gestion: 4
+  inicio: "2017-04"
+  # El histórico se corta al cierre de la prueba desplazada: los meses de
+  # g2026 no existen en esta corrida (ni como panel ni como respaldo).
+  fin: "2025-03"
+
+poblacion:
+  categorias:
+    - "PLASTICOS"
+    - "PAPELES"
+    - "PAPEL FOTOCOPIA"
+    - "ESCRITURA Y TRAZADO"
+    - "CUADERNOS"
+
+particion:
+  fin_entrenamiento: "2023-03"
+  fin_validacion: "2024-03"
+
+series:
+  devoluciones: "descartar"
+  rellenar_ceros_intermedios: true
+
+evento_exogeno:
+  nombre: "covid19"
+  desde: "2020-03"
+  hasta: "2021-02"
+  tratamiento: "copiar_gestion_previa"
+
+inclusion:
+  historial_minimo_meses: 36
+  proporcion_maxima_ceros: 0.70
+  volumen_minimo_unidades: 50
+
+modelos:
+  activos:
+    - naive_m1
+    - naive_m1_gf
+    - ma_2
+    - ma_2_gf
+    - ma_12
+    - ma_12_gf
+    - exp_smooth_opt
+    - holt_winters
+    - croston
+    - lightgbm
+    # --- brazos ML2 ---
+    - lightgbm_directo
+    - dlinear
+    - nhits
+    - tft
+    - chronos
+    # --- segunda etapa (usan los pronósticos de los demás) ---
+    - mezcla_prom
+    - mezcla_pond
+    - mezcla_h
+    - motor
+
+  benchmark_promedio_movil: "ma_12"
+  benchmark_naive: "naive_m1"
+
+  exp_smooth:
+    alfa_min: 0.05
+    alfa_max: 0.95
+    alfa_paso: 0.05
+
+  holt_winters:
+    periodo_estacional: 12
+    alfa_rejilla: [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+    beta_rejilla: [0.0, 0.05, 0.1, 0.2]
+    gamma_rejilla: [0.0, 0.05, 0.1, 0.2]
+
+  croston:
+    alfa_rejilla: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+
+  lightgbm:
+    objective: "tweedie"
+    tweedie_variance_power: 1.464977652919245
+    metric: "tweedie"
+    learning_rate: 0.05310654167584386
+    num_leaves: 137
+    min_data_in_leaf: 61
+    feature_fraction: 0.5778124801487501
+    bagging_fraction: 0.870285300844084
+    bagging_freq: 1
+    lambda_l2: 24.468189902436567
+    num_boost_round: 3000
+    early_stopping_rounds: 100
+    seed: 20260406
+    num_threads: 1
+    deterministic: true
+    force_row_wise: true
+    verbosity: -1
+
+  # --- Brazos neuronales (neuralforecast) ------------------------------------
+  # Configs congeladas de la V5 (las mejores MEDIDAS de cada arquitectura).
+  neuronales:
+    semilla: 20260408
+    horizonte: 12
+    input_size: 24
+    max_steps: 1500
+    tweedie_rho: 1.464977652919245
+    dlinear:
+      perdida: "mae"
+      moving_avg_window: 13
+    nhits:
+      perdida: "mae"
+    tft:
+      perdida: "tweedie"
+      hidden_size: 64
+      exogenas:
+        mes: true
+        estaticas: ["categoria", "canal", "regional"]
+
+  # --- Brazo fundacional (Chronos-Bolt) --------------------------------------
+  # Los factores por categoría se re-estiman solos sobre la validación
+  # desplazada (g2024, pre-crisis) — su fragilidad ante el quiebre de
+  # régimen de g2025 es parte de lo que esta corrida mide.
+  chronos:
+    checkpoint: "amazon/chronos-bolt-base"
+    contexto_maximo: 96
+    lote: 256
+    calibrar: "categoria"
+
+  # --- Mezcladores (V7: menú anti-régimen) ------------------------------------
+  # Menú ampliado con los brazos de diversidad de sesgo; los pesos se
+  # re-estiman solos sobre g2024.
+  mezclador:
+    candidatos:
+      - lightgbm
+      - chronos
+      - exp_smooth_opt
+      - holt_winters
+      - tft
+      - nhits
+      - naive_m1
+
+  motor_regla: "mae_mas_bias"
+  motor_seleccion: "multihorizonte"
+
+features:
+  rezagos: [1, 2, 3, 6, 12]
+  ventanas_moviles: [3, 6, 12]
+  incluir_mes: true
+  incluir_anio: true
+  incluir_tendencia: true
+  categoricas: ["sku", "canal", "regional"]
+  v2:
+    categoria: true
+    precio: true
+    perdidas: true
+    quiebres: true
+    tipo_cambio: true
+    derivadas: true
+  tc_regimen_fijo: 6.96
+  archivo_quiebres: "datos/crudo/quiebres.csv"
+  archivo_tipo_cambio: "datos/crudo/tipo_cambio.csv"
+
+multihorizonte:
+  activo: true
+  horizonte_maximo: 12
+  origenes: "rodantes"
+  reentrenar_lightgbm: true
+  # Mismo diseño que la V5: el resultado negativo del directo re-entrenado
+  # también se somete al segundo año de prueba.
+  reentrenar_directo: true
+
+pruebas:
+  alfa: 0.05
+  alternativa: "less"
+  metrica_contraste: "error_compuesto_unidades"
+  shapiro_n_maximo: 5000
+  semilla: 20260406
+
+figuras:
+  dpi: 300
+  escala_grises: true
+  formato: "png"
+
+salidas:
+  directorio: "salidas_ml2_v7_blindaje"
