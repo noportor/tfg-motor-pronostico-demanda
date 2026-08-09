@@ -383,6 +383,11 @@ def criterio_seleccion_multihorizonte(
             )
         elif nombre == "croston":
             cruda = proyectar_constante(modelo, historia, horizonte)
+        elif hasattr(modelo, "proyectar_directo"):
+            # Brazos multi-horizonte DIRECTOS (ML2): emiten el abanico h=1..H
+            # de una sola vez; realimentarlos recursivamente desperdiciaría su
+            # diseño y no correspondería a cómo se usarían en operación.
+            cruda = modelo.proyectar_directo(historia, horizonte)
         else:
             cruda = proyectar_recursivo(modelo, historia, horizonte)
 
@@ -520,6 +525,9 @@ def evaluar(
                 )
             elif nombre == "croston":
                 cruda = proyectar_constante(modelo, historia, horizonte)
+            elif hasattr(modelo, "proyectar_directo"):
+                # Brazos ML2: proyección directa nativa (ver criterio arriba).
+                cruda = modelo.proyectar_directo(historia, horizonte)
             else:
                 cruda = proyectar_recursivo(modelo, historia, horizonte)
 

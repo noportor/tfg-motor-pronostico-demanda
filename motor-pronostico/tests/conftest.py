@@ -20,6 +20,12 @@ if str(RAIZ) not in sys.path:
 from src.config import cargar_config  # noqa: E402
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "ml2: brazos exploratorios ML2 (requieren torch/neuralforecast)"
+    )
+
+
 @pytest.fixture(scope="session")
 def cfg():
     """Configuración real del experimento (no una copia sintética).
