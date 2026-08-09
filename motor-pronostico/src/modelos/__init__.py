@@ -72,6 +72,7 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
         "lightgbm": lambda: ModeloLightGBM(cfg, tabla),
         # --- Brazos ML2 (corrida exploratoria post-documento) ---------------
         # Imports perezosos: el experimento documentado no depende de torch.
+        "lightgbm_directo": lambda: _lgbm_directo(cfg, tabla),
         "dlinear": lambda: _neural(cfg, "dlinear", tabla),
         "nhits": lambda: _neural(cfg, "nhits", tabla),
         "deepar": lambda: _neural(cfg, "deepar", tabla),
@@ -80,8 +81,11 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
     }
 
     modelos: dict[str, object] = {}
+    # La segunda etapa (motor y mezcladores) se construye en el paso 8 del
+    # pipeline: necesita los pronósticos de los demás brazos.
+    segunda_etapa = {"motor", "mezcla_prom", "mezcla_pond"}
     for nombre in cfg.modelos_activos:
-        if nombre == "motor":
+        if nombre in segunda_etapa:
             continue
         if nombre not in disponibles:
             raise ValueError(
@@ -90,6 +94,11 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
             )
         modelos[nombre] = disponibles[nombre]()
     return modelos
+
+
+def _lgbm_directo(cfg: Config, tabla: pd.DataFrame):
+    from .lightgbm_directo import ModeloLightGBMDirecto
+    return ModeloLightGBMDirecto(cfg, tabla)
 
 
 def _neural(cfg: Config, arquitectura: str, tabla: pd.DataFrame):
