@@ -135,6 +135,7 @@ class Motor:
         # Orden alfabético fijo: es también el criterio de desempate, y tiene que
         # ser reproducible (RN-5).
         candidatos = sorted(candidatos)
+        self._candidatos = candidatos
 
         real = self.panel.reindex(index=meses_validacion)
         series = list(self.panel.columns)
@@ -229,8 +230,11 @@ class Motor:
         if self._elegido is None:
             raise RuntimeError("Hay que llamar a ajustar() antes.")
 
-        candidatos = [c for c in sorted(self.cfg.modelos_candidatos)
-                      if c in errores_prueba.columns]
+        # Los candidatos REALES de la selección (guardados en ajustar): los
+        # brazos de segunda etapa que aparezcan en las métricas — los
+        # mezcladores — no fueron opciones del motor y no cuentan aquí.
+        base = getattr(self, "_candidatos", None) or sorted(self.cfg.modelos_candidatos)
+        candidatos = [c for c in base if c in errores_prueba.columns]
         tabla = errores_prueba[candidatos]
         mejor_real = tabla.idxmin(axis=1)
         elegido = self._elegido.reindex(tabla.index)
