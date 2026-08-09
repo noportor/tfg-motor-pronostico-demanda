@@ -83,7 +83,7 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
     modelos: dict[str, object] = {}
     # La segunda etapa (motor y mezcladores) se construye en el paso 8 del
     # pipeline: necesita los pronósticos de los demás brazos.
-    segunda_etapa = {"motor", "mezcla_prom", "mezcla_pond"}
+    segunda_etapa = {"motor", "mezcla_prom", "mezcla_pond", "mezcla_h"}
     for nombre in cfg.modelos_activos:
         if nombre in segunda_etapa:
             continue

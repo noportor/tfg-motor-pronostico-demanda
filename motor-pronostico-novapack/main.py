@@ -39,7 +39,9 @@ from src.modelos import construir_modelos
 from src.modelos.base import (
     aplicar_respaldo, enmascarar_fuera_de_vida, mae_naive_entrenamiento, truncar_en_cero,
 )
-from src.modelos.mezclador import NOMBRES_MEZCLA, Mezclador
+from src.modelos.mezclador import (
+    NOMBRE_MEZCLA_H, NOMBRES_MEZCLA, Mezclador, MezcladorHorizonte,
+)
 from src.modelos.motor import Motor
 from src.reporte import (
     Reporte, actualizar_manifiesto_figuras, informe_pruebas,
@@ -595,6 +597,15 @@ def comando_ejecutar(cfg) -> int:
     # validación: la corrección del evento vive solo en el ajuste.
     seleccion_modo = str(cfg.modelos.get("motor_seleccion", "un_paso"))
     criterio_externo = None
+    proyecciones_val = real_val = None
+    if seleccion_modo == "multihorizonte" or NOMBRE_MEZCLA_H in cfg.modelos_activos:
+        # Los abanicos de validación (h=1..H desde el cierre de entrenamiento)
+        # se computan UNA vez y alimentan las dos decisiones que los usan: la
+        # ventana de selección del motor y los pesos por horizonte de mezcla_h.
+        proyecciones_val, real_val = multihorizonte.proyecciones_validacion(
+            cfg, modelos, panel, panel_real, panel_entrenamiento,
+            cohorte_ajustada, exogenas,
+        )
     if seleccion_modo == "multihorizonte":
         # Ablación pre-registrada: la ventana de selección es el error
         # multihorizonte de validación (proyección recursiva desde el cierre
@@ -605,6 +616,7 @@ def comando_ejecutar(cfg) -> int:
         criterio_externo = multihorizonte.criterio_seleccion_multihorizonte(
             cfg, modelos, panel, panel_real, panel_entrenamiento,
             cohorte_ajustada, exogenas,
+            proyecciones=proyecciones_val, real=real_val,
         )
     motor = Motor(cfg, predicciones, panel_real)
     motor.ajustar(panel_entrenamiento, panel_validacion,
@@ -619,7 +631,7 @@ def comando_ejecutar(cfg) -> int:
     # --- 8c. Mezcladores (V4): combinar en vez de seleccionar ----------------
     # Pesos estimados SOLO en validación (RN-2, verificación activa propia) y
     # congelados para prueba y multihorizonte. El menú es curado y declarado.
-    mezclas: dict[str, Mezclador] = {}
+    mezclas: dict[str, object] = {}
     for nombre_mezcla in [m for m in cfg.modelos_activos if m in NOMBRES_MEZCLA]:
         mezcla = Mezclador(cfg, nombre_mezcla, predicciones, panel_real)
         mezcla.ajustar(panel_entrenamiento, panel_validacion)
@@ -629,6 +641,24 @@ def comando_ejecutar(cfg) -> int:
         for linea in mezcla.informe_lineas():
             print("      " + linea)
         mezclas[nombre_mezcla] = mezcla
+    if NOMBRE_MEZCLA_H in cfg.modelos_activos:
+        # V5: pesos por candidato × horizonte sobre el abanico de validación.
+        # Son pesos VALORIZADOS (agregan series de unidades distintas): sin
+        # maestro de costos el brazo no puede estimarse y se declara.
+        if not maestro.disponible:
+            print(f"      {NOMBRE_MEZCLA_H}: SIN maestro de costos — los pesos "
+                  "por horizonte son valorizados; el brazo se salta y se declara.")
+        else:
+            mezcla = MezcladorHorizonte(
+                cfg, predicciones, panel_real, maestro.costo_por_serie
+            )
+            mezcla.ajustar(proyecciones_val, real_val)
+            predicciones[NOMBRE_MEZCLA_H] = truncar_en_cero(
+                enmascarar_fuera_de_vida(mezcla.predecir(panel), panel)
+            )
+            for linea in mezcla.informe_lineas():
+                print("      " + linea)
+            mezclas[NOMBRE_MEZCLA_H] = mezcla
     if mezclas:
         reporte.etapa(
             "mezclador", "Mezcladores: combinación con pesos de validación",
@@ -640,6 +670,10 @@ def comando_ejecutar(cfg) -> int:
                 "mezcla_pond": "inverso del error compuesto (mae+|bias|) de "
                                "validación, por serie; piso numérico relativo "
                                "a la mediana de la serie",
+                "mezcla_h": "inverso de la D valorizada del abanico de "
+                            "validación, por candidato × horizonte; a un paso "
+                            "aplican los pesos de h=1 (cada mes evaluado es "
+                            "un pronóstico h=1)",
                 "congelados": "los pesos no se re-estiman en prueba ni en el "
                               "multihorizonte (RN-2)",
             },
@@ -904,7 +938,7 @@ def comando_ejecutar(cfg) -> int:
     metrica = cfg.pruebas.metrica_contraste
     matriz = metricas.matriz_de_errores(errores, metrica=metrica)
     propuestos = [
-        m for m in ("mezcla_pond", "mezcla_prom", "motor", "lightgbm")
+        m for m in ("mezcla_h", "mezcla_pond", "mezcla_prom", "motor", "lightgbm")
         if m in matriz.columns
     ]
     referencias = [
@@ -1009,6 +1043,7 @@ def comando_ejecutar(cfg) -> int:
             "origenes": resultado_mh.informe.origenes,
             "horizonte_maximo": resultado_mh.informe.horizonte_maximo,
             "reentrenos_lightgbm": resultado_mh.informe.reentrenos_lightgbm,
+            "reentrenos_directo": resultado_mh.informe.reentrenos_directo,
             "respaldos": resultado_mh.informe.respaldos,
             "observaciones": resultado_mh.informe.observaciones,
             "observaciones_con_costo": resultado_mh.informe.observaciones_con_costo,
@@ -1024,6 +1059,7 @@ def comando_ejecutar(cfg) -> int:
                 "origenes": cfg.multihorizonte.origenes,
                 "horizonte_maximo": cfg.multihorizonte.horizonte_maximo,
                 "reentrenar_lightgbm": cfg.multihorizonte.reentrenar_lightgbm,
+                "reentrenar_directo": cfg.multihorizonte.reentrenar_directo,
                 "seleccion_motor": "congelada de validación (RN-2)",
                 "proyeccion": "recursiva, la mecánica del sistema en producción; "
                               "Croston constante (sus estados solo se actualizan "

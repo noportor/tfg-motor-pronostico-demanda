@@ -119,6 +119,10 @@ class ConfigMultihorizonte:
     horizonte_maximo: int
     origenes: str  # "rodantes" | "fijo"
     reentrenar_lightgbm: bool
+    # V5: el brazo directo también puede re-entrenar por origen (misma
+    # excepción declarada que el recursivo: el sistema en producción
+    # re-entrena en cada corrida mensual; árboles congelados del ajuste base).
+    reentrenar_directo: bool = False
 
 
 @dataclass(frozen=True)
@@ -423,6 +427,7 @@ def cargar_config(
             horizonte_maximo=int(_exigir(m, "horizonte_maximo", "multihorizonte")),
             origenes=str(_exigir(m, "origenes", "multihorizonte")).lower(),
             reentrenar_lightgbm=bool(m.get("reentrenar_lightgbm", True)),
+            reentrenar_directo=bool(m.get("reentrenar_directo", False)),
         )
         if multihorizonte.horizonte_maximo < 1:
             raise ErrorDeConfiguracion(
@@ -528,6 +533,12 @@ def cargar_config(
             "modelos.motor_seleccion='multihorizonte' requiere la sección "
             "'multihorizonte' de la configuración (define el horizonte y el "
             "re-entrenamiento del brazo global)."
+        )
+    if "mezcla_h" in activos and multihorizonte is None:
+        raise ErrorDeConfiguracion(
+            "El brazo 'mezcla_h' pesa por horizonte sobre el abanico de "
+            "validación: requiere la sección 'multihorizonte' de la "
+            "configuración."
         )
 
     return Config(

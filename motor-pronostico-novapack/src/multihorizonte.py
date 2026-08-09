@@ -329,7 +329,7 @@ def criterio_por_serie(
     return pd.Series(criterio, index=real.columns, name="criterio")
 
 
-def criterio_seleccion_multihorizonte(
+def proyecciones_validacion(
     cfg: Config,
     modelos: dict[str, object],
     panel_ajuste: pd.DataFrame,
@@ -337,19 +337,23 @@ def criterio_seleccion_multihorizonte(
     panel_entrenamiento: pd.DataFrame,
     cohorte_ajustada: pd.DataFrame,
     exogenas=None,
-) -> pd.DataFrame:
-    """Matriz serie × candidato con el error MULTIHORIZONTE de validación.
+) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+    """El abanico de VALIDACIÓN de cada brazo (h=1..H desde el cierre de
+    entrenamiento), completo con la cascada de respaldo declarada.
 
-    Es la ablación pre-registrada de la ventana de selección del motor: en vez
-    de comparar pronósticos a un paso, cada candidato proyecta la validación
-    completa desde el cierre de entrenamiento (h=1..H) con la MISMA mecánica
-    recursiva con la que después será evaluado — que es como selecciona el
-    backtest del sistema en producción.
+    Es el insumo compartido de las dos decisiones que el pipeline toma mirando
+    solo validación con mecánica multihorizonte: la ventana de selección del
+    motor (ablación pre-registrada) y los pesos por horizonte del mezclador
+    (V5). Computarlo una sola vez evita duplicar las proyecciones caras
+    (re-entrenos de LightGBM, abanicos neuronales, Chronos).
 
     RN-2 intacta y verificada activamente: el origen es el cierre de
-    entrenamiento y los meses comparados caen íntegros en validación. La
+    entrenamiento y los meses proyectados caen íntegros en validación. La
     información usada es exactamente la misma que en la selección a un paso
     (historia de entrenamiento + realidad de validación).
+
+    Devuelve ``(proyecciones, real)``: un panel meses × series por brazo y la
+    realidad de esos mismos meses.
     """
     origen = cfg.particion.fin_entrenamiento
     meses_validacion = pd.period_range(
@@ -367,14 +371,13 @@ def criterio_seleccion_multihorizonte(
     real = panel_real.reindex(index=meses)
     media_entrenamiento = panel_entrenamiento.mean(axis=0, skipna=True)
     ultimo_observado = historia.ffill().iloc[-1]
-    regla = str(cfg.modelos.get("motor_regla", "mae"))
 
     proyector_lgbm = (
         ProyectorLightGBM(cfg, cohorte_ajustada, modelos["lightgbm"], exogenas)
         if "lightgbm" in modelos else None
     )
 
-    columnas: dict[str, pd.Series] = {}
+    salida: dict[str, pd.DataFrame] = {}
     for nombre, modelo in modelos.items():
         if nombre == "lightgbm":
             cruda = proyector_lgbm.proyectar(
@@ -394,12 +397,45 @@ def criterio_seleccion_multihorizonte(
         cruda = cruda.reindex(index=meses, columns=panel_ajuste.columns)
         # Misma cascada de respaldo que la evaluación: ningún candidato llega
         # a la comparación con huecos que otro no tenga.
-        completa = truncar_en_cero(
+        salida[nombre] = truncar_en_cero(
             cruda.fillna(ultimo_observado).fillna(media_entrenamiento)
         )
-        columnas[nombre] = criterio_por_serie(completa, real, regla)
+    return salida, real
 
-    return pd.DataFrame(columnas)
+
+def criterio_seleccion_multihorizonte(
+    cfg: Config,
+    modelos: dict[str, object],
+    panel_ajuste: pd.DataFrame,
+    panel_real: pd.DataFrame,
+    panel_entrenamiento: pd.DataFrame,
+    cohorte_ajustada: pd.DataFrame,
+    exogenas=None,
+    proyecciones: dict[str, pd.DataFrame] | None = None,
+    real: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Matriz serie × candidato con el error MULTIHORIZONTE de validación.
+
+    Es la ablación pre-registrada de la ventana de selección del motor: en vez
+    de comparar pronósticos a un paso, cada candidato proyecta la validación
+    completa desde el cierre de entrenamiento (h=1..H) con la MISMA mecánica
+    recursiva con la que después será evaluado — que es como selecciona el
+    backtest del sistema en producción.
+
+    Acepta los abanicos ya computados por ``proyecciones_validacion`` (para no
+    proyectar dos veces cuando el mezclador por horizonte también los usa); si
+    no llegan, los computa acá con las mismas garantías.
+    """
+    if proyecciones is None or real is None:
+        proyecciones, real = proyecciones_validacion(
+            cfg, modelos, panel_ajuste, panel_real, panel_entrenamiento,
+            cohorte_ajustada, exogenas,
+        )
+    regla = str(cfg.modelos.get("motor_regla", "mae"))
+    return pd.DataFrame({
+        nombre: criterio_por_serie(proyeccion, real, regla)
+        for nombre, proyeccion in proyecciones.items()
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +450,7 @@ class InformeMultihorizonte:
     observaciones: int = 0
     observaciones_con_costo: int = 0
     reentrenos_lightgbm: int = 0
+    reentrenos_directo: int = 0
     respaldos: dict[str, int] = field(default_factory=dict)
     sin_pronostico: int = 0
     d_global: dict[str, float] = field(default_factory=dict)
@@ -432,6 +469,11 @@ class InformeMultihorizonte:
             f"({cobertura:.1f} % con costo)",
             f"Re-entrenamientos de LightGBM    : {self.reentrenos_lightgbm}",
         ]
+        if self.reentrenos_directo:
+            salida.append(
+                f"Re-entrenamientos del directo    : {self.reentrenos_directo} "
+                "boosters (por origen, árboles congelados)"
+            )
         con_respaldo = {m: n for m, n in self.respaldos.items() if n}
         if con_respaldo:
             salida.append(f"Respaldos aplicados               : {con_respaldo}")
@@ -586,6 +628,9 @@ def evaluar(
     informe.respaldos = respaldos
     informe.reentrenos_lightgbm = (
         proyector_lgbm.reentrenos if proyector_lgbm else 0
+    )
+    informe.reentrenos_directo = int(
+        getattr(modelos.get("lightgbm_directo"), "reentrenos", 0)
     )
 
     resumen_horizonte = agregado_valorizado(con_costo, ["modelo", "horizonte"])
