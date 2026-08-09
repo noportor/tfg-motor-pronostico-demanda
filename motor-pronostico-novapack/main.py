@@ -39,6 +39,7 @@ from src.modelos import construir_modelos
 from src.modelos.base import (
     aplicar_respaldo, enmascarar_fuera_de_vida, mae_naive_entrenamiento, truncar_en_cero,
 )
+from src.modelos.mezclador import NOMBRES_MEZCLA, Mezclador
 from src.modelos.motor import Motor
 from src.reporte import (
     Reporte, actualizar_manifiesto_figuras, informe_pruebas,
@@ -615,6 +616,35 @@ def comando_ejecutar(cfg) -> int:
         print("      " + linea)
     reporte.tabla("seleccion_motor.csv", motor.informe.seleccion)
 
+    # --- 8c. Mezcladores (V4): combinar en vez de seleccionar ----------------
+    # Pesos estimados SOLO en validación (RN-2, verificación activa propia) y
+    # congelados para prueba y multihorizonte. El menú es curado y declarado.
+    mezclas: dict[str, Mezclador] = {}
+    for nombre_mezcla in [m for m in cfg.modelos_activos if m in NOMBRES_MEZCLA]:
+        mezcla = Mezclador(cfg, nombre_mezcla, predicciones, panel_real)
+        mezcla.ajustar(panel_entrenamiento, panel_validacion)
+        predicciones[nombre_mezcla] = truncar_en_cero(
+            enmascarar_fuera_de_vida(mezcla.predecir(panel), panel)
+        )
+        for linea in mezcla.informe_lineas():
+            print("      " + linea)
+        mezclas[nombre_mezcla] = mezcla
+    if mezclas:
+        reporte.etapa(
+            "mezclador", "Mezcladores: combinación con pesos de validación",
+            decisiones={
+                "candidatos": list(
+                    cfg.modelos.get("mezclador", {}).get("candidatos", [])
+                ),
+                "mezcla_prom": "promedio simple del menú",
+                "mezcla_pond": "inverso del error compuesto (mae+|bias|) de "
+                               "validación, por serie; piso numérico relativo "
+                               "a la mediana de la serie",
+                "congelados": "los pesos no se re-estiman en prueba ni en el "
+                              "multihorizonte (RN-2)",
+            },
+        )
+
     # --- Persistencia por serie y mes: la realidad + los doce pronósticos ---
     # Habilita la vista «Series» del visor y la figura de casos: toda la
     # evidencia del protocolo a un paso queda inspeccionable serie por serie.
@@ -873,7 +903,10 @@ def comando_ejecutar(cfg) -> int:
     inicio = _paso(f"10/{total}", "Contraste estadístico")
     metrica = cfg.pruebas.metrica_contraste
     matriz = metricas.matriz_de_errores(errores, metrica=metrica)
-    propuestos = [m for m in ("motor", "lightgbm") if m in matriz.columns]
+    propuestos = [
+        m for m in ("mezcla_pond", "mezcla_prom", "motor", "lightgbm")
+        if m in matriz.columns
+    ]
     referencias = [
         m for m in (cfg.modelos["benchmark_promedio_movil"], cfg.modelos["benchmark_naive"])
         if m in matriz.columns
@@ -963,6 +996,7 @@ def comando_ejecutar(cfg) -> int:
         resultado_mh = multihorizonte.evaluar(
             cfg, modelos, elegido, panel, panel_real, panel_entrenamiento,
             cohorte_ajustada, maestro.costo_por_serie, exogenas, estratos,
+            mezclas=mezclas,
         )
         for linea in resultado_mh.informe.lineas():
             print("      " + linea)

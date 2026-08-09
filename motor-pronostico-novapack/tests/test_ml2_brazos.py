@@ -57,8 +57,10 @@ def test_el_largo_descarta_la_vida_no_nacida():
 # ---------------------------------------------------------------------------
 
 class _Particion:
-    def __init__(self, fin_entrenamiento: pd.Period):
+    def __init__(self, fin_entrenamiento: pd.Period,
+                 fin_validacion: pd.Period | None = None):
         self.fin_entrenamiento = fin_entrenamiento
+        self.fin_validacion = fin_validacion
 
 
 class _CfgStub:
@@ -80,6 +82,77 @@ class _CfgStub:
                 },
             },
         }
+
+
+def test_mezclador_pesos_composicion_y_guardia():
+    """V4: pesos de validación, composición consciente de NaN y RN-2 activa."""
+    from src.modelos.mezclador import Mezclador
+
+    indice = pd.period_range("2024-01", periods=6, freq="M")
+    series = ["S1|X|SC", "S2|X|SC"]
+    real = pd.DataFrame(
+        {"S1|X|SC": [10, 10, 10, 10, 10, 10],
+         "S2|X|SC": [20, 20, 20, 20, 20, 20]},
+        index=indice, dtype=float,
+    )
+    entrenamiento = real.iloc[:3]
+    validacion = real.iloc[3:]
+
+    # A clava la validación; B yerra por 10 en todos lados.
+    predicciones = {
+        "A": real.copy(),
+        "B": real + 10.0,
+    }
+
+    class _Cfg:
+        particion = _Particion(indice[2], fin_validacion=indice[-1])
+        modelos = {"mezclador": {"candidatos": ["A", "B"]}}
+
+    ponderado = Mezclador(_Cfg(), "mezcla_pond", predicciones, real)
+    ponderado.ajustar(entrenamiento, validacion)
+    pesos = ponderado.pesos.div(ponderado.pesos.sum(axis=1), axis=0)
+    assert (pesos["A"] > 0.99).all()          # el error ~0 domina el peso
+
+    promedio = Mezclador(_Cfg(), "mezcla_prom", predicciones, real)
+    promedio.ajustar(entrenamiento, validacion)
+    salida = promedio.predecir(real)
+    assert salida.loc[indice[4], "S1|X|SC"] == pytest.approx(15.0)  # (10+20)/2
+
+    # NaN en un candidato: su peso se redistribuye (no contamina la mezcla).
+    predicciones["B"].loc[indice[4], "S1|X|SC"] = np.nan
+    salida = promedio.predecir(real)
+    assert salida.loc[indice[4], "S1|X|SC"] == pytest.approx(10.0)
+
+    # RN-2: una ventana de pesos que pise la prueba tiene que reventar.
+    class _CfgCorta:
+        particion = _Particion(indice[2], fin_validacion=indice[3])
+        modelos = {"mezclador": {"candidatos": ["A", "B"]}}
+
+    with pytest.raises(ValueError, match="RN-2"):
+        Mezclador(_CfgCorta(), "mezcla_pond", predicciones, real).ajustar(
+            entrenamiento, validacion
+        )
+
+
+def test_directo_alinea_objetivo_sin_fuga(cfg):
+    """V4: el par del horizonte h apunta a y(p+h−1) — la prueba anti-fuga."""
+    from src.modelos.lightgbm_directo import ModeloLightGBMDirecto
+
+    meses = pd.period_range("2020-01", periods=6, freq="M")
+    tabla = pd.DataFrame({
+        "serie": ["A|X|SC"] * 6,
+        "periodo": meses,
+        "y": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    })
+    modelo = ModeloLightGBMDirecto(cfg, tabla)
+
+    h1 = modelo._pares(1)
+    assert (h1["y_objetivo"] == h1["y"]).all()          # h=1 ≡ brazo base
+
+    h3 = modelo._pares(3).dropna(subset=["y_objetivo"])
+    # La fila de enero (features con info <= diciembre) apunta a marzo.
+    assert h3["y_objetivo"].tolist() == [3.0, 4.0, 5.0, 6.0]
+    assert (h3["mes_objetivo"] == h3["periodo"] + 2).all()
 
 
 @pytest.mark.ml2

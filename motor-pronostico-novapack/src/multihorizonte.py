@@ -472,6 +472,7 @@ def evaluar(
     costo_por_serie: pd.Series,
     exogenas=None,
     estratos: dict[str, pd.Series] | None = None,
+    mezclas: dict[str, object] | None = None,
 ) -> ResultadoMultihorizonte:
     """Corre el protocolo multihorizonte completo y agrega la curva D(h).
 
@@ -504,7 +505,7 @@ def evaluar(
     informe = InformeMultihorizonte(
         origenes=[str(o) for o in origenes],
         horizonte_maximo=mh.horizonte_maximo,
-        modelos=sorted(modelos) + ["motor"],
+        modelos=sorted(modelos) + ["motor"] + sorted(mezclas or {}),
     )
     respaldos: dict[str, int] = {nombre: 0 for nombre in informe.modelos}
     filas_obs: list[pd.DataFrame] = []
@@ -552,6 +553,14 @@ def evaluar(
             presentes = [s for s in grupo.index if s in motor.columns]
             motor[presentes] = proyecciones[nombre][presentes]
         proyecciones["motor"] = motor
+
+        # Los mezcladores componen las proyecciones de su menú con los pesos
+        # CONGELADOS de validación: en el horizonte no se re-decide nada,
+        # igual que la selección del motor.
+        for nombre_mezcla, mezcla in (mezclas or {}).items():
+            proyecciones[nombre_mezcla] = truncar_en_cero(
+                mezcla.componer(proyecciones)
+            )
 
         y = real_futuro.to_numpy(dtype=float)
         for nombre, proyeccion in proyecciones.items():
