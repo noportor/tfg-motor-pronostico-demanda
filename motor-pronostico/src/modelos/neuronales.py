@@ -101,7 +101,10 @@ class ModeloNeural:
         comun = dict(cfg.modelos.get("neuronales", {}))
         self.parametros = dict(comun.get(arquitectura, {}))
         self.horizonte = int(comun.get("horizonte", 12))
-        self.input_size = int(comun.get("input_size", 24))
+        # input_size admite ajuste POR BRAZO (la búsqueda V3 eligió ventanas
+        # distintas por arquitectura); el valor común es el respaldo.
+        self.input_size = int(self.parametros.pop(
+            "input_size", comun.get("input_size", 24)))
         self.semilla = int(comun.get("semilla", 20260408))
         self.max_steps = int(self.parametros.pop("max_steps",
                                                  comun.get("max_steps", 1000)))
@@ -113,10 +116,11 @@ class ModeloNeural:
         exogenas = dict(self.parametros.pop("exogenas", {}) or {})
         self.usar_mes = bool(exogenas.get("mes", False))
         self.estaticas = list(exogenas.get("estaticas", []))
-        if self.estaticas and self.tabla is None:
+        self.historicas = list(exogenas.get("historicas", []))
+        if (self.estaticas or self.historicas) and self.tabla is None:
             raise ValueError(
-                f"{arquitectura}: exógenas estáticas declaradas pero el brazo "
-                "no recibió la tabla de features."
+                f"{arquitectura}: exógenas declaradas pero el brazo no "
+                "recibió la tabla de features."
             )
 
         self.nf = None
@@ -173,6 +177,8 @@ class ModeloNeural:
             base["futr_exog_list"] = ["mes"]
         if self.estaticas:
             base["stat_exog_list"] = list(self.estaticas)
+        if self.historicas:
+            base["hist_exog_list"] = list(self.historicas)
         if self.arquitectura == "deepar":
             # DeepAR trae su propio escalado interno; el parámetro genérico de
             # ventanas no aplica en todas las versiones de la librería.
@@ -182,9 +188,35 @@ class ModeloNeural:
 
     # -- exógenas -------------------------------------------------------------
 
-    def _con_mes(self, largo: pd.DataFrame) -> pd.DataFrame:
+    def _con_exogenas(self, largo: pd.DataFrame) -> pd.DataFrame:
+        """Agrega el mes calendario y las exógenas históricas al formato largo.
+
+        Las históricas salen de la tabla de features del pipeline (V3): son
+        columnas YA CAUSALES (rezagadas, RN-3). La imputación es declarada:
+        ffill/bfill por serie (persistencia del nivel) y 0 como último
+        recurso — no fabrica dinámica, solo completa el contrato de
+        completitud de la librería.
+        """
         if self.usar_mes:
             largo = largo.assign(mes=largo["ds"].dt.month.astype("int64"))
+        if self.historicas:
+            faltantes = [c for c in self.historicas if c not in self.tabla.columns]
+            if faltantes:
+                raise ValueError(
+                    f"Exógenas históricas ausentes de la tabla: {faltantes}"
+                )
+            hist = self.tabla[["serie", "periodo", *self.historicas]].copy()
+            hist["ds"] = hist["periodo"].dt.to_timestamp()
+            hist = hist.rename(columns={"serie": "unique_id"})
+            largo = largo.merge(
+                hist[["unique_id", "ds", *self.historicas]],
+                on=["unique_id", "ds"], how="left",
+            )
+            grupos = largo.groupby("unique_id", sort=False)
+            for columna in self.historicas:
+                largo[columna] = grupos[columna].ffill()
+                largo[columna] = largo.groupby("unique_id", sort=False)[columna].bfill()
+            largo[self.historicas] = largo[self.historicas].fillna(0.0)
         return largo
 
     def _armar_static_df(self) -> pd.DataFrame | None:
@@ -229,7 +261,7 @@ class ModeloNeural:
         np.random.seed(self.semilla)
 
         historia = pd.concat([entrenamiento, validacion])
-        largo = self._con_mes(_a_largo(historia))
+        largo = self._con_exogenas(_a_largo(historia))
         self._static_df = self._armar_static_df()
         self.nf = self._construir()
         self.nf.fit(df=largo, static_df=self._static_df,
@@ -237,13 +269,14 @@ class ModeloNeural:
 
     def _predecir_desde(self, historia: pd.DataFrame) -> pd.DataFrame:
         """Abanico directo h=1..H desde el último mes de ``historia``."""
-        largo = self._con_mes(_a_largo(historia))
+        largo = self._con_exogenas(_a_largo(historia))
         pred = self.nf.predict(df=largo, static_df=self._static_df,
                                futr_df=self._futuro_de(largo))
         pred = pred.reset_index() if "unique_id" not in pred.columns else pred
+        reservadas = {"unique_id", "ds", "mes", *self.historicas}
         columna = next(
             c for c in pred.columns
-            if c not in ("unique_id", "ds", "mes")
+            if c not in reservadas
             and not c.endswith(("-lo-80", "-hi-80", "-median"))
         )
         return _pivotear(pred, columna)
