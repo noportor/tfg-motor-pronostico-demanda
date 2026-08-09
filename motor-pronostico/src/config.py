@@ -148,6 +148,9 @@ class ConfigFeatures:
     tc_regimen_fijo: float
     archivo_quiebres: str | None
     archivo_tipo_cambio: str | None
+    # V6: calendario comercial declarado (temporadas por categoría + mes de
+    # inicio de clases). None/{} = apagado; las features no existen.
+    calendario: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -481,7 +484,24 @@ def cargar_config(
                           if f.get("archivo_quiebres") else None),
         archivo_tipo_cambio=(str(f["archivo_tipo_cambio"])
                              if f.get("archivo_tipo_cambio") else None),
+        calendario=(dict(f["calendario"]) if f.get("calendario") else None),
     )
+    if features.calendario:
+        inicio = features.calendario.get("inicio_clases_mes", 2)
+        if not (isinstance(inicio, int) and 1 <= inicio <= 12):
+            raise ErrorDeConfiguracion(
+                "features.calendario.inicio_clases_mes debe ser un mes 1..12; "
+                f"llegó {inicio!r}."
+            )
+        for categoria_t, meses_t in (
+            features.calendario.get("temporadas", {}) or {}
+        ).items():
+            meses_malos = [m for m in meses_t if int(m) < 1 or int(m) > 12]
+            if meses_malos:
+                raise ErrorDeConfiguracion(
+                    f"features.calendario.temporadas['{categoria_t}'] tiene "
+                    f"meses fuera de 1..12: {meses_malos}."
+                )
     if min(features.rezagos) < 1:
         raise ErrorDeConfiguracion(
             "Todos los rezagos deben ser >= 1: un rezago 0 sería el propio valor "
