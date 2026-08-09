@@ -560,6 +560,14 @@ def cargar_config(
             "validación: requiere la sección 'multihorizonte' de la "
             "configuración."
         )
+    if "mezcla_conmutada" in activos:
+        mezclador_crudo = modelos.get("mezclador", {}) or {}
+        if not mezclador_crudo.get("candidatos_quiebre"):
+            raise ErrorDeConfiguracion(
+                "El brazo 'mezcla_conmutada' requiere modelos.mezclador."
+                "candidatos_quiebre: el menú diverso del quiebre es una "
+                "decisión declarada."
+            )
 
     return Config(
         datos=datos,

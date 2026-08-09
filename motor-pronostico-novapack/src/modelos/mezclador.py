@@ -42,11 +42,18 @@ from ..config import Config
 
 NOMBRES_MEZCLA = ("mezcla_prom", "mezcla_pond")
 NOMBRE_MEZCLA_H = "mezcla_h"
+NOMBRE_MEZCLA_CONMUTADA = "mezcla_conmutada"
 
 
-def _menu_declarado(cfg: Config, predicciones: dict[str, pd.DataFrame]) -> list[str]:
-    """El menú curado de la configuración, verificado contra los brazos activos."""
-    declarados = list(cfg.modelos.get("mezclador", {}).get("candidatos", []))
+def _menu_declarado(
+    cfg: Config,
+    predicciones: dict[str, pd.DataFrame],
+    declarados: list[str] | None = None,
+) -> list[str]:
+    """El menú declarado (de la config o explícito), verificado contra los
+    brazos activos."""
+    if declarados is None:
+        declarados = list(cfg.modelos.get("mezclador", {}).get("candidatos", []))
     if not declarados:
         raise ValueError(
             "modelos.mezclador.candidatos está vacío: el menú del "
@@ -95,6 +102,7 @@ class Mezclador:
         nombre: str,
         predicciones: dict[str, pd.DataFrame],
         panel: pd.DataFrame,
+        candidatos: list[str] | None = None,
     ):
         if nombre not in NOMBRES_MEZCLA:
             raise ValueError(f"Mezclador desconocido: {nombre!r}")
@@ -102,7 +110,9 @@ class Mezclador:
         self.nombre = nombre
         self.predicciones = predicciones
         self.panel = panel
-        self.candidatos = _menu_declarado(cfg, predicciones)
+        # `candidatos` explícito permite instancias internas con OTRO menú
+        # (la conmutada usa dos); sin él rige el menú de la configuración.
+        self.candidatos = _menu_declarado(cfg, predicciones, candidatos)
         self.pesos: pd.DataFrame | None = None  # serie × candidato
 
     # -- interfaz común ------------------------------------------------------
@@ -379,4 +389,180 @@ class MezcladorHorizonte:
                     f"{m} {100 * w:.0f} %" for m, w in fila.items()
                 )
                 salida.append(f"   h={h}: {fila_txt}")
+        return salida
+
+
+class MezclaConmutada:
+    """Conmutación por régimen entre dos menús de mezcla (V8).
+
+    La V7 midió que ningún menú estático domina ambos regímenes: el menú
+    curado gana el año normal (67,8 / 72,9) y el menú diverso gana el año de
+    quiebre (77,7-80,7 / 70,8-74,2) porque en el quiebre TODO el menú curado
+    comparte el signo del sesgo y no queda nada que cancelar. Este brazo
+    convierte esa disyuntiva en un sistema: dos mezclas de promedio simple
+    (la regla se fija a priori — la lección M4 tres veces confirmada) sobre
+    los dos menús declarados, y un DETECTOR causal que transfiere peso hacia
+    el menú diverso cuando el sistema base muestra sesgo de régimen.
+
+    El detector (RN-3/RN-2 por construcción):
+    - Señal: el sesgo valorizado del sistema BASE sobre los últimos
+      ``ventana_meses`` meses YA OBSERVADOS (pronóstico a un paso de la
+      mezcla base contra la realidad, valorizado por costo). En el mes t la
+      ventana termina en t−1: la señal jamás toca el mes que se predice.
+    - λ(t) = rampa declarada entre ``umbral_activacion_pct`` (por debajo:
+      régimen normal, λ=0, la conmutada ES la mezcla base) y
+      ``umbral_pleno_pct`` (por encima: quiebre declarado, λ=1, la conmutada
+      ES la mezcla diversa). Sin ventana completa de evidencia: λ=0
+      (respaldo declarado — sin señal se asume normalidad).
+    - En el multihorizonte, λ se evalúa UNA vez en el origen (el estado de
+      régimen que el planificador conoce ese día) y aplica al abanico entero.
+
+    Los umbrales son constantes DECLARADAS (no se calibran mirando prueba);
+    la señal mensual se persiste (``tabla_senal``) para el análisis de
+    sensibilidad post-hoc.
+    """
+
+    nombre = NOMBRE_MEZCLA_CONMUTADA
+
+    def __init__(
+        self,
+        cfg: Config,
+        predicciones: dict[str, pd.DataFrame],
+        panel: pd.DataFrame,
+        costo_por_serie: pd.Series,
+    ):
+        mezclador_cfg = cfg.modelos.get("mezclador", {})
+        conmutador = mezclador_cfg.get("conmutador", {}) or {}
+        self.ventana = int(conmutador.get("ventana_meses", 3))
+        self.umbral_activacion = float(
+            conmutador.get("umbral_activacion_pct", 10.0)
+        )
+        self.umbral_pleno = float(conmutador.get("umbral_pleno_pct", 20.0))
+        if self.ventana < 1:
+            raise ValueError("conmutador.ventana_meses debe ser >= 1.")
+        if self.umbral_pleno <= self.umbral_activacion:
+            raise ValueError(
+                "conmutador.umbral_pleno_pct debe ser mayor que "
+                "umbral_activacion_pct (la rampa necesita ancho)."
+            )
+        quiebre = list(mezclador_cfg.get("candidatos_quiebre", []))
+        if not quiebre:
+            raise ValueError(
+                "mezcla_conmutada requiere modelos.mezclador."
+                "candidatos_quiebre: el menú diverso es una decisión "
+                "declarada, no un implícito."
+            )
+        self.cfg = cfg
+        self.panel = panel
+        self.costo_por_serie = costo_por_serie
+        self.base = Mezclador(cfg, "mezcla_prom", predicciones, panel)
+        self.quiebre = Mezclador(
+            cfg, "mezcla_prom", predicciones, panel, candidatos=quiebre
+        )
+        self._pred_base: pd.DataFrame | None = None
+        self._real_val: pd.Series | None = None   # Σ costo·real por mes
+        self._pred_val: pd.Series | None = None   # Σ costo·pred por mes
+
+    # -- interfaz común ------------------------------------------------------
+
+    def ajustar(self, entrenamiento: pd.DataFrame, validacion: pd.DataFrame) -> None:
+        self.base.ajustar(entrenamiento, validacion)
+        self.quiebre.ajustar(entrenamiento, validacion)
+        # La señal se precalcula sobre TODO el panel: agregados valorizados
+        # mensuales de la realidad y del pronóstico base, solo en celdas
+        # donde existen ambos y hay costo.
+        pred = self.base.predecir(self.panel)
+        costo = self.costo_por_serie.reindex(self.panel.columns).to_numpy(dtype=float)
+        y = self.panel.to_numpy(dtype=float)
+        p = pred.to_numpy(dtype=float)
+        valido = ~np.isnan(y) & ~np.isnan(p) & ~np.isnan(costo)[None, :]
+        self._pred_base = pred
+        self._real_val = pd.Series(
+            np.where(valido, costo[None, :] * y, 0.0).sum(axis=1),
+            index=self.panel.index,
+        )
+        self._pred_val = pd.Series(
+            np.where(valido, costo[None, :] * p, 0.0).sum(axis=1),
+            index=self.panel.index,
+        )
+
+    def _senal_en(self, mes: pd.Period) -> tuple[float, float]:
+        """``(sesgo_movil_pct, lambda)`` del mes, con ventana que termina en
+        ``mes − 1``. Sin ventana completa con demanda observada: λ=0."""
+        if self._real_val is None:
+            raise RuntimeError("Hay que llamar a ajustar() antes.")
+        ventana = pd.period_range(mes - self.ventana, mes - 1, freq="M")
+        disponibles = [m for m in ventana if m in self._real_val.index]
+        if len(disponibles) < self.ventana:
+            return np.nan, 0.0
+        real = float(self._real_val.loc[disponibles].sum())
+        pred = float(self._pred_val.loc[disponibles].sum())
+        if real <= 0:
+            return np.nan, 0.0
+        sesgo = 100.0 * (pred - real) / real
+        rampa = (abs(sesgo) - self.umbral_activacion) / (
+            self.umbral_pleno - self.umbral_activacion
+        )
+        return sesgo, float(np.clip(rampa, 0.0, 1.0))
+
+    def predecir(self, datos: pd.DataFrame) -> pd.DataFrame:
+        p_base = self.base.predecir(datos)
+        p_quiebre = self.quiebre.predecir(datos)
+        lambdas = pd.Series(
+            [self._senal_en(mes)[1] for mes in datos.index], index=datos.index
+        )
+        return self._combinar(p_base, p_quiebre, lambdas)
+
+    @staticmethod
+    def _combinar(
+        p_base: pd.DataFrame, p_quiebre: pd.DataFrame, lambdas: pd.Series
+    ) -> pd.DataFrame:
+        """Combinación por fila consciente de NaN: donde falta un lado, el
+        otro toma todo el peso (nunca se fabrica un hueco)."""
+        base = p_base.to_numpy(dtype=float)
+        quiebre = p_quiebre.reindex(
+            index=p_base.index, columns=p_base.columns
+        ).to_numpy(dtype=float)
+        lam = lambdas.to_numpy(dtype=float)[:, None]
+        peso_base = np.where(~np.isnan(base), 1.0 - lam, 0.0)
+        peso_quiebre = np.where(~np.isnan(quiebre), lam, 0.0)
+        total = peso_base + peso_quiebre
+        with np.errstate(invalid="ignore"):
+            resultado = np.where(
+                total > 0,
+                (np.nan_to_num(base) * peso_base
+                 + np.nan_to_num(quiebre) * peso_quiebre) / np.where(total > 0, total, 1.0),
+                np.nan,
+            )
+        return pd.DataFrame(resultado, index=p_base.index, columns=p_base.columns)
+
+    # -- protocolo multihorizonte -------------------------------------------
+
+    def componer(self, proyecciones: dict[str, pd.DataFrame]) -> pd.DataFrame:
+        """λ del ORIGEN (meses observados ≤ origen) aplicado al abanico entero."""
+        fan_base = self.base.componer(proyecciones)
+        fan_quiebre = self.quiebre.componer(proyecciones)
+        primer_mes = pd.Period(fan_base.index[0], freq="M")
+        _, lam = self._senal_en(primer_mes)
+        lambdas = pd.Series(lam, index=fan_base.index)
+        return self._combinar(fan_base, fan_quiebre, lambdas)
+
+    # -- reporte -------------------------------------------------------------
+
+    def tabla_senal(self, meses: pd.PeriodIndex) -> pd.DataFrame:
+        filas = []
+        for mes in meses:
+            sesgo, lam = self._senal_en(mes)
+            filas.append({"mes": str(mes), "sesgo_movil_pct": sesgo,
+                          "lambda": lam})
+        return pd.DataFrame(filas)
+
+    def informe_lineas(self) -> list[str]:
+        salida = [
+            f"{self.nombre}: (1−λ)·prom[{', '.join(self.base.candidatos)}] + "
+            f"λ·prom[{', '.join(self.quiebre.candidatos)}]",
+            f"   señal: sesgo valorizado móvil {self.ventana} m del sistema "
+            f"base · rampa {self.umbral_activacion:.0f} %→"
+            f"{self.umbral_pleno:.0f} %",
+        ]
         return salida

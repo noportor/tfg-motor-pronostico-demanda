@@ -40,7 +40,8 @@ from src.modelos.base import (
     aplicar_respaldo, enmascarar_fuera_de_vida, mae_naive_entrenamiento, truncar_en_cero,
 )
 from src.modelos.mezclador import (
-    NOMBRE_MEZCLA_H, NOMBRES_MEZCLA, Mezclador, MezcladorHorizonte,
+    NOMBRE_MEZCLA_CONMUTADA, NOMBRE_MEZCLA_H, NOMBRES_MEZCLA,
+    Mezclador, MezclaConmutada, MezcladorHorizonte,
 )
 from src.modelos.motor import Motor
 from src.reporte import (
@@ -659,6 +660,34 @@ def comando_ejecutar(cfg) -> int:
             for linea in mezcla.informe_lineas():
                 print("      " + linea)
             mezclas[NOMBRE_MEZCLA_H] = mezcla
+    if NOMBRE_MEZCLA_CONMUTADA in cfg.modelos_activos:
+        # V8: conmutación por régimen entre el menú curado y el diverso, con
+        # señal de sesgo valorizado móvil (necesita el maestro de costos).
+        if not maestro.disponible:
+            print(f"      {NOMBRE_MEZCLA_CONMUTADA}: SIN maestro de costos — "
+                  "la señal de régimen es valorizada; el brazo se salta y se "
+                  "declara.")
+        else:
+            conmutada = MezclaConmutada(
+                cfg, predicciones, panel_real, maestro.costo_por_serie
+            )
+            conmutada.ajustar(panel_entrenamiento, panel_validacion)
+            predicciones[NOMBRE_MEZCLA_CONMUTADA] = truncar_en_cero(
+                enmascarar_fuera_de_vida(conmutada.predecir(panel), panel)
+            )
+            for linea in conmutada.informe_lineas():
+                print("      " + linea)
+            meses_senal = pd.period_range(
+                cfg.particion.fin_validacion + 1, cfg.periodo.fin, freq="M"
+            )
+            senal = conmutada.tabla_senal(meses_senal)
+            reporte.tabla("conmutador_senal.csv", senal)
+            activados = senal.loc[senal["lambda"] > 0]
+            print(f"      señal en prueba: {len(activados)}/{len(senal)} meses "
+                  f"con λ>0"
+                  + (f" · λ medio activado {activados['lambda'].mean():.2f}"
+                     if len(activados) else ""))
+            mezclas[NOMBRE_MEZCLA_CONMUTADA] = conmutada
     if mezclas:
         reporte.etapa(
             "mezclador", "Mezcladores: combinación con pesos de validación",
@@ -674,6 +703,11 @@ def comando_ejecutar(cfg) -> int:
                             "validación, por candidato × horizonte; a un paso "
                             "aplican los pesos de h=1 (cada mes evaluado es "
                             "un pronóstico h=1)",
+                "mezcla_conmutada": "conmutación por régimen: (1−λ)·prom del "
+                                    "menú curado + λ·prom del menú diverso; "
+                                    "λ = rampa declarada sobre el sesgo "
+                                    "valorizado móvil YA OBSERVADO del "
+                                    "sistema base (causal por construcción)",
                 "congelados": "los pesos no se re-estiman en prueba ni en el "
                               "multihorizonte (RN-2)",
             },
@@ -938,7 +972,8 @@ def comando_ejecutar(cfg) -> int:
     metrica = cfg.pruebas.metrica_contraste
     matriz = metricas.matriz_de_errores(errores, metrica=metrica)
     propuestos = [
-        m for m in ("mezcla_h", "mezcla_pond", "mezcla_prom", "motor", "lightgbm")
+        m for m in ("mezcla_conmutada", "mezcla_h", "mezcla_pond",
+                    "mezcla_prom", "motor", "lightgbm")
         if m in matriz.columns
     ]
     referencias = [

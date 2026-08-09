@@ -197,6 +197,79 @@ def test_mezcla_h_pesos_por_horizonte_composicion_y_guardia():
         mezcla.ajustar({"A": fan_a}, real_fan)
 
 
+def test_conmutada_senal_rampa_y_causalidad():
+    """V8: λ=0 en régimen normal, rampa declarada, y señal SOLO del pasado."""
+    from src.modelos.mezclador import MezclaConmutada
+
+    indice = pd.period_range("2024-01", periods=10, freq="M")
+    series = ["S1|X|SC"]
+    real = pd.DataFrame({"S1|X|SC": [100.0] * 10}, index=indice)
+
+    # A (menú base) clava los primeros 5 meses y sobre-pronostica 30 % después;
+    # B completa el menú diverso con sesgo opuesto.
+    pred_a = real.copy()
+    pred_a.iloc[5:] = 130.0
+    pred_b = real - 20.0
+
+    class _Cfg:
+        particion = _Particion(indice[2], fin_validacion=indice[4])
+        modelos = {"mezclador": {
+            "candidatos": ["A"],
+            "candidatos_quiebre": ["A", "B"],
+            "conmutador": {"ventana_meses": 3,
+                           "umbral_activacion_pct": 10,
+                           "umbral_pleno_pct": 20},
+        }}
+
+    predicciones = {"A": pred_a, "B": pred_b}
+    costo = pd.Series(1.0, index=series)
+    conmutada = MezclaConmutada(_Cfg(), predicciones, real, costo)
+    conmutada.ajustar(real.iloc[:3], real.iloc[3:5])
+
+    # Meses 4-5 (ventana 1..3 / 2..4, sesgo 0): régimen normal, λ=0 y la
+    # conmutada ES la mezcla base.
+    sesgo, lam = conmutada._senal_en(indice[4])
+    assert sesgo == pytest.approx(0.0) and lam == 0.0
+    salida = conmutada.predecir(real)
+    assert salida.loc[indice[4], "S1|X|SC"] == pytest.approx(100.0)
+
+    # Mes 8: la ventana 5..7 ya es todo sobre-pronóstico (+30 %): λ=1 y la
+    # conmutada ES el promedio del menú diverso ((130+80)/2 = 105).
+    sesgo, lam = conmutada._senal_en(indice[8])
+    assert sesgo == pytest.approx(30.0) and lam == 1.0
+    assert salida.loc[indice[8], "S1|X|SC"] == pytest.approx(105.0)
+
+    # Mes 6: ventana 3..5 mezcla un mes malo con dos buenos (sesgo 10 %):
+    # justo en la activación, λ=0 (la rampa arranca DESPUÉS del umbral).
+    sesgo, lam = conmutada._senal_en(indice[6])
+    assert sesgo == pytest.approx(10.0) and lam == 0.0
+
+    # Mes 7: ventana 4..6, sesgo 20 % → tope de la rampa, λ=1.
+    _, lam = conmutada._senal_en(indice[7])
+    assert lam == 1.0
+
+    # Causalidad: alterar el FUTURO no mueve la señal de ningún mes previo.
+    real_alterada = real.copy()
+    real_alterada.iloc[9] = 1_000_000.0
+    conmutada2 = MezclaConmutada(
+        _Cfg(), predicciones, real_alterada, costo
+    )
+    conmutada2.ajustar(real_alterada.iloc[:3], real_alterada.iloc[3:5])
+    for mes in indice[:9]:
+        assert conmutada._senal_en(mes)[1] == conmutada2._senal_en(mes)[1]
+
+    # Sin ventana completa de evidencia: λ=0 (respaldo declarado).
+    assert conmutada._senal_en(indice[1])[1] == 0.0
+
+    # Menú diverso sin declarar: error inmediato y claro.
+    class _CfgSinQuiebre:
+        particion = _Particion(indice[2], fin_validacion=indice[4])
+        modelos = {"mezclador": {"candidatos": ["A"]}}
+
+    with pytest.raises(ValueError, match="candidatos_quiebre"):
+        MezclaConmutada(_CfgSinQuiebre(), predicciones, real, costo)
+
+
 def test_directo_reentrena_por_origen(cfg, monkeypatch):
     """V5: re-entrena los 12 boosters por origen NUEVO, con árboles congelados
     y sin ver un solo mes posterior al origen (anti-fuga)."""
