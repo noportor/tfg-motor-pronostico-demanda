@@ -37,15 +37,28 @@ class ModeloChronos:
 
     nombre = "chronos"
 
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, tabla: pd.DataFrame | None = None):
         self.cfg = cfg
         parametros = dict(cfg.modelos.get("chronos", {}))
         self.checkpoint = str(parametros.get("checkpoint", "amazon/chronos-bolt-base"))
         self.contexto_maximo = int(parametros.get("contexto_maximo", 96))
         self.lote = int(parametros.get("lote", 256))
-        self.calibrar = bool(parametros.get("calibrar", False))
+        # calibrar: false | "global" | "categoria" (true equivale a "global").
+        crudo = parametros.get("calibrar", False)
+        self.calibrar = "global" if crudo is True else (str(crudo) if crudo else "")
+        if self.calibrar == "categoria" and tabla is None:
+            raise ValueError(
+                "chronos: calibración por categoría declarada pero el brazo "
+                "no recibió la tabla de features."
+            )
+        self._categoria_por_serie = (
+            tabla.drop_duplicates("serie").set_index("serie")["categoria"]
+            .astype(str)
+            if (tabla is not None and "categoria" in tabla.columns) else None
+        )
         self.pipeline = None
         self.factor = 1.0
+        self.factores: pd.Series | None = None  # por serie (V3, por categoría)
 
     # -- interfaz común ------------------------------------------------------
 
@@ -71,8 +84,7 @@ class ModeloChronos:
         )
         if self.calibrar:
             historia_total = pd.concat([entrenamiento, validacion])
-            reales = 0.0
-            predichos = 0.0
+            piezas: list[pd.DataFrame] = []
             for mes in validacion.index:
                 historia = historia_total.loc[historia_total.index < mes]
                 abanico = self._abanico(historia, horizonte=1)
@@ -81,9 +93,30 @@ class ModeloChronos:
                 y = validacion.loc[mes]
                 p = abanico.loc[mes].reindex(y.index)
                 comparable = y.notna() & p.notna()
-                reales += float(y[comparable].sum())
-                predichos += float(p[comparable].sum())
+                piezas.append(pd.DataFrame({
+                    "serie": y.index[comparable],
+                    "real": y[comparable].to_numpy(dtype=float),
+                    "pred": p[comparable].to_numpy(dtype=float),
+                }))
+            celdas = (pd.concat(piezas, ignore_index=True) if piezas
+                      else pd.DataFrame(columns=["serie", "real", "pred"]))
+            reales, predichos = float(celdas["real"].sum()), float(celdas["pred"].sum())
             self.factor = reales / predichos if predichos > 0 else 1.0
+
+            if self.calibrar == "categoria" and self._categoria_por_serie is not None:
+                # Un factor por categoría (masa suficiente: son 5), con el
+                # global como respaldo donde no haya con qué estimar.
+                celdas["categoria"] = celdas["serie"].map(self._categoria_por_serie)
+                por_cat = celdas.groupby("categoria", observed=True).agg(
+                    real=("real", "sum"), pred=("pred", "sum")
+                )
+                factor_cat = (por_cat["real"] / por_cat["pred"]).where(
+                    por_cat["pred"] > 0, self.factor
+                )
+                self.factores = (
+                    self._categoria_por_serie.map(factor_cat)
+                    .fillna(self.factor)
+                )
 
     def _abanico(self, historia: pd.DataFrame, horizonte: int) -> pd.DataFrame:
         """Media pronosticada h=1..``horizonte`` para cada serie del panel."""
@@ -114,7 +147,11 @@ class ModeloChronos:
 
         origen = historia.index[-1]
         meses = pd.period_range(origen + 1, origen + horizonte, freq="M")
-        abanico = pd.DataFrame(medias * self.factor, index=meses, columns=series)
+        abanico = pd.DataFrame(medias, index=meses, columns=series)
+        if self.factores is not None:
+            abanico = abanico * self.factores.reindex(abanico.columns).fillna(self.factor)
+        else:
+            abanico = abanico * self.factor
         return abanico.reindex(columns=historia.columns)
 
     def predecir(self, datos: pd.DataFrame) -> pd.DataFrame:

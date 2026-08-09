@@ -1,0 +1,272 @@
+# =============================================================================
+# CORRIDA EXPLORATORIA ML2 — V3: cada red con su propia búsqueda
+# =============================================================================
+# La V2 midió que la potencia Tweedie del campeón NO es transferible a ciegas
+# (N-HiTS empeoró; DLinear divergió) y que el factor global de Chronos
+# sobre-corrige. La V3 responde:
+#
+#   1. HPO PROPIO para TFT y N-HiTS (scripts/ajustar_neuronal.py — Optuna,
+#      fold interno g2024, D interna valorizada; el protocolo del campeón).
+#      Los ganadores se declaran abajo citando la corrida.
+#   2. TFT suma exógenas HISTÓRICAS (precio y tipo de cambio rezagados, ya
+#      causales por construcción; quiebres queda fuera: su NaN estructural
+#      pre-2022 es información y no se fabrica).
+#   3. Chronos con calibración POR CATEGORÍA (5 factores + respaldo global).
+#   4. DLinear vuelve a MAE (rol de control; la cabeza de distribución
+#      diverge en una arquitectura lineal). DeepAR prueba StudentT.
+#
+# La V1 (salidas_ml2/), la V2 (salidas_ml2_v2/) y el experimento DOCUMENTADO
+# (config.yaml, salidas/) no se tocan.
+# =============================================================================
+
+datos:
+  archivo: "datos/crudo/ventas_novapack.csv"
+  columnas:
+    fecha: "fecha"
+    sku: "sku"
+    canal: "canal"
+    regional: "regional"
+    cantidad: "cantidad"
+    categoria: "categoria"
+    precio: "precio"
+    perdidas: "perdidas"
+  separador: ","
+  codificacion: "utf-8"
+
+periodo:
+  mes_inicio_gestion: 4
+  inicio: "2017-04"
+  fin: "2026-03"
+
+poblacion:
+  categorias:
+    - "PLASTICOS"
+    - "PAPELES"
+    - "PAPEL FOTOCOPIA"
+    - "ESCRITURA Y TRAZADO"
+    - "CUADERNOS"
+
+particion:
+  fin_entrenamiento: "2024-03"
+  fin_validacion: "2025-03"
+
+series:
+  devoluciones: "descartar"
+  rellenar_ceros_intermedios: true
+
+evento_exogeno:
+  nombre: "covid19"
+  desde: "2020-03"
+  hasta: "2021-02"
+  tratamiento: "copiar_gestion_previa"
+
+inclusion:
+  historial_minimo_meses: 36
+  proporcion_maxima_ceros: 0.70
+  volumen_minimo_unidades: 50
+
+modelos:
+  activos:
+    - naive_m1
+    - naive_m1_gf
+    - ma_2
+    - ma_2_gf
+    - ma_12
+    - ma_12_gf
+    - exp_smooth_opt
+    - holt_winters
+    - croston
+    - lightgbm
+    # --- brazos ML2 ---
+    - dlinear
+    - nhits
+    - deepar
+    - tft
+    - chronos
+    - motor
+
+  benchmark_promedio_movil: "ma_12"
+  benchmark_naive: "naive_m1"
+
+  exp_smooth:
+    alfa_min: 0.05
+    alfa_max: 0.95
+    alfa_paso: 0.05
+
+  holt_winters:
+    periodo_estacional: 12
+    alfa_rejilla: [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+    beta_rejilla: [0.0, 0.05, 0.1, 0.2]
+    gamma_rejilla: [0.0, 0.05, 0.1, 0.2]
+
+  croston:
+    alfa_rejilla: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+
+  lightgbm:
+    objective: "tweedie"
+    tweedie_variance_power: 1.464977652919245
+    metric: "tweedie"
+    learning_rate: 0.05310654167584386
+    num_leaves: 137
+    min_data_in_leaf: 61
+    feature_fraction: 0.5778124801487501
+    bagging_fraction: 0.870285300844084
+    bagging_freq: 1
+    lambda_l2: 24.468189902436567
+    num_boost_round: 3000
+    early_stopping_rounds: 100
+    seed: 20260406
+    num_threads: 1
+    deterministic: true
+    force_row_wise: true
+    verbosity: -1
+
+  # --- Brazos neuronales (neuralforecast) ------------------------------------
+  # Entrenamiento ÚNICO sobre el bloque de entrenamiento con parada temprana
+  # contra validación (la misma excepción que LightGBM); horizonte directo 12.
+  # V1 UNIVARIANTE: sin exógenas — se mide arquitectura, no features. Semilla
+  # fija; el entrenamiento en GPU no es bit a bit reproducible entre hardware
+  # distinto y se declara.
+  neuronales:
+    semilla: 20260408
+    horizonte: 12
+    input_size: 24
+    max_steps: 1500
+    # La potencia Tweedie del campeón (declarada por la búsqueda de LightGBM).
+    tweedie_rho: 1.464977652919245
+    dlinear:
+      # V3: de vuelta al control puro — la cabeza de distribución Tweedie
+      # diverge numéricamente en una arquitectura lineal (V2, 1e13).
+      perdida: "mae"
+      moving_avg_window: 13
+    nhits:
+      # DECLARADO desde salidas_tuning_ml2/nhits_tuning_mejor.json (25
+      # ensayos, fold g2024, D interna 67,8): la búsqueda honesta eligió MAE
+      # — con ventana corta y escalado estándar el sesgo interno cae a −3,9 %.
+      # La Tweedie ciega de la V2 (rho del campeón) había dado D 112.
+      perdida: "mae"
+      input_size: 12
+      learning_rate: 0.000811236813134289
+      scaler_type: "standard"
+    deepar:
+      # NB (V1, −74,6 %) y Tweedie (V2, −98,1 %) colapsaron: StudentT como
+      # último intento antes de declararlo incompatible con esta demanda.
+      perdida: "studentt"
+    tft:
+      # DECLARADO desde salidas_tuning_ml2/tft_tuning_mejor.json (25 ensayos,
+      # fold g2024, D interna 68,0 con sesgo ~0): Tweedie con rho PROPIO
+      # (1,405, no el 1,465 del campeón — la potencia se ajusta a cada
+      # modelo) y ventana corta. Exógenas completas: estáticas + mes +
+      # históricas causales (precio y TC rezagados).
+      perdida: "tweedie"
+      tweedie_rho: 1.405263790442798
+      input_size: 12
+      learning_rate: 0.0003237836489040023
+      scaler_type: "robust"
+      hidden_size: 64
+      exogenas:
+        mes: true
+        estaticas: ["categoria", "canal", "regional"]
+        historicas: ["precio_rezago_1", "tc_rezago_1"]
+
+  # --- Brazo fundacional (Chronos-Bolt) --------------------------------------
+  # Cero-shot: pesos públicos, inferencia local, sin fine-tuning. La media
+  # pronosticada como punto (no la mediana — la lección Tweedie).
+  chronos:
+    checkpoint: "amazon/chronos-bolt-base"
+    contexto_maximo: 96
+    lote: 256
+    # V3: factor POR CATEGORÍA (el global de la V2 sobre-corrigió: el sesgo
+    # de validación no es el de prueba; 5 factores con respaldo global).
+    calibrar: "categoria"
+
+  motor_regla: "mae_mas_bias"
+  # V2: la ventana de selección pre-registrada que corrige la maldición del
+  # ganador medida en la V1 (acierto 20,7 % → 12,3 % al pasar de 11 a 15
+  # candidatos con selección a un paso).
+  motor_seleccion: "multihorizonte"
+
+features:
+  rezagos: [1, 2, 3, 6, 12]
+  ventanas_moviles: [3, 6, 12]
+  incluir_mes: true
+  incluir_anio: true
+  incluir_tendencia: true
+  categoricas: ["sku", "canal", "regional"]
+  v2:
+    categoria: true
+    precio: true
+    perdidas: true
+    quiebres: true
+    tipo_cambio: true
+    derivadas: true
+  tc_regimen_fijo: 6.96
+  archivo_quiebres: "datos/crudo/quiebres.csv"
+  archivo_tipo_cambio: "datos/crudo/tipo_cambio.csv"
+
+multihorizonte:
+  activo: true
+  horizonte_maximo: 12
+  origenes: "rodantes"
+  reentrenar_lightgbm: true
+
+# -----------------------------------------------------------------------------
+# 7d. Búsqueda de hiperparámetros de los brazos neuronales (V3)
+# -----------------------------------------------------------------------------
+# La consume scripts/ajustar_neuronal.py (NO el pipeline). Misma disciplina que
+# lightgbm_tuning: fold interno = gestión 2024 (última de entrenamiento),
+# criterio = D interna valorizada a un paso, TPE con semilla fija, ganadores
+# declarados a mano arriba. La secuencia de ensayos es determinista; el
+# entrenamiento en GPU no es bit a bit reproducible y SE DECLARA (RN-5).
+neuronal_tuning:
+  semilla: 20260408
+  n_trials: 25
+  fold_desde: "2023-04"
+  fold_hasta: "2024-03"
+  max_steps: 1000
+  espacio:
+    tft:
+      perdida: ["mae", "tweedie"]
+      tweedie_rho: [1.1, 1.6]
+      learning_rate: [0.0001, 0.005]
+      input_size: [12, 24, 36]
+      hidden_size: [32, 64, 128]
+      scaler_type: ["robust", "standard"]
+    nhits:
+      perdida: ["mae", "tweedie"]
+      tweedie_rho: [1.1, 1.6]
+      learning_rate: [0.0001, 0.005]
+      input_size: [12, 24, 36]
+      scaler_type: ["robust", "standard"]
+
+lightgbm_tuning:
+  semilla: 20260408
+  n_trials: 60
+  fold_desde: "2023-04"
+  fold_hasta: "2024-03"
+  num_boost_round: 3000
+  early_stopping_rounds: 100
+  espacio:
+    objective: ["regression_l1", "regression_l2", "tweedie"]
+    tweedie_variance_power: [1.1, 1.6]
+    learning_rate: [0.02, 0.12]
+    num_leaves: [15, 255]
+    min_data_in_leaf: [10, 200]
+    feature_fraction: [0.5, 1.0]
+    bagging_fraction: [0.5, 1.0]
+    lambda_l2: [0.0, 30.0]
+
+pruebas:
+  alfa: 0.05
+  alternativa: "less"
+  metrica_contraste: "error_compuesto_unidades"
+  shapiro_n_maximo: 5000
+  semilla: 20260406
+
+figuras:
+  dpi: 300
+  escala_grises: true
+  formato: "png"
+
+salidas:
+  directorio: "salidas_ml2_v3"

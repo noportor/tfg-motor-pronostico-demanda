@@ -76,7 +76,7 @@ def construir_modelos(cfg: Config, tabla: pd.DataFrame) -> dict[str, object]:
         "nhits": lambda: _neural(cfg, "nhits", tabla),
         "deepar": lambda: _neural(cfg, "deepar", tabla),
         "tft": lambda: _neural(cfg, "tft", tabla),
-        "chronos": lambda: _fundacional(cfg),
+        "chronos": lambda: _fundacional(cfg, tabla),
     }
 
     modelos: dict[str, object] = {}
@@ -97,9 +97,9 @@ def _neural(cfg: Config, arquitectura: str, tabla: pd.DataFrame):
     return ModeloNeural(cfg, arquitectura, tabla)
 
 
-def _fundacional(cfg: Config):
+def _fundacional(cfg: Config, tabla: pd.DataFrame):
     from .fundacional import ModeloChronos
-    return ModeloChronos(cfg)
+    return ModeloChronos(cfg, tabla)
 
 
 def _rejilla_alfa(configuracion: dict) -> list[float]:
