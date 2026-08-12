@@ -189,11 +189,20 @@ class Reporte:
         self.archivos.append(ruta)
         return ruta
 
-    def tabla(self, nombre: str, df: pd.DataFrame, indice: bool = False) -> Path:
+    def tabla(self, nombre: str, df: pd.DataFrame, indice: bool = False,
+              precision_exacta: bool = False) -> Path:
         ruta = self.directorio / nombre
         # Separador decimal punto y sin índice: es lo que consume LibreOffice y
         # Excel sin reinterpretar los números según la configuración regional.
-        df.to_csv(ruta, index=indice, encoding="utf-8", lineterminator="\n")
+        #
+        # ``precision_exacta`` fuerza 17 dígitos significativos, el mínimo que
+        # garantiza el ida y vuelta exacto de un float64. Solo hace falta donde
+        # el CSV se vuelve a leer para RE-EJECUTAR un cálculo: en la matriz del
+        # contraste, dos series que difieren en el último bit cuentan como
+        # empate al releerlas con menos dígitos, y eso mueve los rangos de
+        # Friedman y el conteo de empates de Wilcoxon.
+        df.to_csv(ruta, index=indice, encoding="utf-8", lineterminator="\n",
+                  float_format="%.17g" if precision_exacta else None)
         self.archivos.append(ruta)
         return ruta
 
