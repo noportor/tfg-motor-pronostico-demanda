@@ -971,6 +971,22 @@ def comando_ejecutar(cfg) -> int:
     inicio = _paso(f"10/{total}", "Contraste estadístico")
     metrica = cfg.pruebas.metrica_contraste
     matriz = metricas.matriz_de_errores(errores, metrica=metrica)
+
+    # La matriz se publica ANTES de contrastar y el contraste se corre sobre la
+    # copia RE-LEÍDA del archivo. No es un rodeo: garantiza que los valores del
+    # documento sean exactamente los que reproduce quien ejecute el script del
+    # anexo sobre el artefacto publicado. Serializar y volver a leer puede
+    # igualar dos errores que en memoria diferían en el último bit —y un empate
+    # de más mueve el estadístico de Wilcoxon—, así que la única forma de que
+    # «lo reportado» y «lo reproducible» coincidan siempre es reportar sobre lo
+    # publicado (RN-5, RN-6).
+    ruta_matriz = reporte.tabla(
+        "matriz_contraste.csv",
+        matriz.rename_axis("serie").reset_index(),
+        precision_exacta=True,
+    )
+    matriz = pd.read_csv(ruta_matriz).set_index("serie")[list(matriz.columns)]
+
     propuestos = [
         m for m in ("mezcla_conmutada", "mezcla_h", "mezcla_pond",
                     "mezcla_prom", "motor", "lightgbm")
@@ -1011,8 +1027,8 @@ def comando_ejecutar(cfg) -> int:
               f"gana en {100 * r.gana_propuesto / max(r.n_pares, 1):.1f} % de las series")
     print(f"      Tasa de acierto del motor: {100 * acierto['tasa_acierto']:.2f} % "
           f"(azar: {100 * acierto['azar_esperado']:.2f} %)")
-    artefactos_contraste = ["pruebas_estadisticas.txt", "victorias_por_modelo.csv",
-                            "rangos_friedman.csv"]
+    artefactos_contraste = ["pruebas_estadisticas.txt", "matriz_contraste.csv",
+                            "victorias_por_modelo.csv", "rangos_friedman.csv"]
     if resultados["friedman"].nemenyi is not None:
         artefactos_contraste.append("nemenyi.csv")
     reporte.etapa(

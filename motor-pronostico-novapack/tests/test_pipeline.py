@@ -37,6 +37,7 @@ SALIDAS_ESPERADAS = (
     "estratos_valorizados.csv",
     "multihorizonte_estratos.csv",
     "pruebas_estadisticas.txt",
+    "matriz_contraste.csv",
     "seleccion_motor.csv",
     "series_y_predicciones.csv",
     "unidad_estructura_sku.csv",
