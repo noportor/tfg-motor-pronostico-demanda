@@ -1,50 +1,52 @@
 # Motor de pronóstico de demanda — NOVAPACK S.A.
 
-Análisis cuantitativo del Trabajo Final de Grado *«Diseño de un motor de
+Artefacto de software del Trabajo Final de Grado *«Diseño de un motor de
 pronóstico de demanda basado en series temporales para mejorar la precisión de
-la planificación de la demanda en NOVAPACK S.A. para la gestión 2026»*
-— UAGRM School of Engineering, Maestría en Ciencia de Datos e Inteligencia
+la planificación de la demanda en NOVAPACK S.A. para la gestión 2026»* —
+UAGRM School of Engineering, Maestría en Ciencia de Datos e Inteligencia
 Artificial.
 
-La especificación completa está en [`REQUERIMIENTOS.md`](REQUERIMIENTOS.md). Este
-archivo explica cómo correrlo y qué produce.
+Este repositorio contiene el código con el que se produjeron **todos los
+resultados cuantitativos del documento**: cada tabla, figura y prueba
+estadística proviene de una corrida reproducible de este pipeline. El Anexo G
+del documento enlaza aquí; el Anexo H reproduce el contraste estadístico con
+[`scripts/anexo_h_contraste.py`](scripts/anexo_h_contraste.py). La
+especificación completa del experimento (requerimientos y reglas de negocio
+RN-1 a RN-6) está en [`REQUERIMIENTOS.md`](REQUERIMIENTOS.md).
 
 ---
 
 ## Qué hace
 
-Compara **once modelos** de pronóstico de demanda mensual sobre cada combinación
-SKU–canal–regional, y contrasta estadísticamente si el motor de selección
-automática mejora la precisión frente a los métodos que la empresa usa hoy.
+Compara **once modelos** de pronóstico de demanda mensual sobre cada
+combinación SKU–canal–regional del portafolio, y contrasta estadísticamente si
+el motor de selección automática mejora la precisión frente a los métodos
+vigentes de planificación.
 
 | Brazo | Papel |
 |---|---|
-| `naive_m1`, `naive_m1_gf` | Línea base estándar y método actual |
-| `ma_2`, `ma_2_gf`, `ma_12`, `ma_12_gf` | Promedio móvil — método actual |
+| `naive_m1`, `naive_m1_gf` | Línea base estándar y método vigente |
+| `ma_2`, `ma_2_gf`, `ma_12`, `ma_12_gf` | Promedio móvil — método vigente |
 | `exp_smooth_opt` | Clásico: suavizado exponencial simple |
 | `holt_winters` | Clásico: nivel + tendencia + estacionalidad |
 | `croston` | Clásico para demanda intermitente |
 | `lightgbm` | Aprendizaje automático, modelo global |
-| `motor` | **La propuesta**: elige por serie el mejor en validación |
+| `motor` | **La propuesta**: elige por serie el mejor modelo en validación |
 
-Los seis primeros no son una elección del autor: son los modelos que
-Planificación aplica hoy, verificados contra el sistema en producción. §10 del
-requerimiento lo exige — el benchmark tiene que ser el método real.
-
----
+Los seis primeros brazos no son una elección del autor: replican los métodos
+que el área de planificación aplica, verificados contra el sistema vigente. El
+benchmark del estudio es el método real, no una línea base de conveniencia.
 
 ## Diseño experimental
 
-**Período.** Nueve gestiones fiscales completas: **abril-2017 → marzo-2026**
-(gestiones 2018 a 2026). NOVAPACK cierra en marzo; una gestión se nombra por el
-año en que cierra.
+**Período.** Nueve gestiones fiscales completas: abril-2017 → marzo-2026
+(gestiones 2018 a 2026, nombradas por el año en que cierran).
 
-**Variable objetivo.** Ventas efectivas mensuales. *No* «demanda total»: la venta
-perdida no se registró antes de 2020, de modo que esa variable cambia de
-definición a mitad de la serie.
+**Variable objetivo.** Ventas efectivas mensuales por combinación
+SKU–canal–regional.
 
-**Partición (RN-2).** Los cortes caen en frontera de gestión, no de año
-calendario, para que ningún bloque parta una campaña escolar por la mitad:
+**Partición.** Los cortes caen en frontera de gestión, para que ningún bloque
+parta una campaña escolar por la mitad:
 
 | Bloque | Gestiones | Meses | Para qué |
 |---|---|---|---|
@@ -52,214 +54,94 @@ calendario, para que ningún bloque parta una campaña escolar por la mitad:
 | Validación | 2025 | abr-2024 … mar-2025 (12) | el motor decide |
 | Prueba | 2026 | abr-2025 … mar-2026 (12) | se reporta el desempeño |
 
-**Evaluación (RN-4).** Un mes hacia adelante, usando el valor real del mes
-anterior. Es la única comparación justa: el promedio móvil y el Naïve funcionan
-así por construcción.
+**Evaluación.** Pronóstico a un mes, con origen rodante: cada mes se pronostica
+usando la información disponible hasta el mes anterior. La métrica de decisión
+es el error compuesto valorizado **D = WMAPE + |Bias|**, que pondera el error
+de cada serie por el costo unitario del producto. La comparación formal entre
+modelos usa pruebas no paramétricas pareadas (Wilcoxon; Friedman con post hoc
+de Nemenyi).
 
----
+## Correspondencia con el documento
 
-## Cómo correrlo
+| Artefacto del repositorio | Lugar en el documento |
+|---|---|
+| `salidas/tabla8_resultados.csv` | Tabla 8 — MAE, MAPE, RMSE y Bias por modelo |
+| `salidas/pruebas_estadisticas.txt` | Constatación y validación: contraste estadístico |
+| `salidas/matriz_contraste.csv` | Matriz serie × modelo sobre la que corren las pruebas |
+| `salidas/seleccion_motor.csv` | Evidencia de la selección de modelo por serie |
+| `salidas/errores_por_serie.csv` | Anexo con los errores por serie (SKU seudonimizados) |
+| `salidas/figura01_*.png` … `figura13_*.png` | Catálogo de figuras del documento (F1–F13) |
+| `salidas/inspeccion_datos.txt`, `cohorte_flujo.csv` | Criterios de inclusión y tamaño de la muestra |
+| `salidas/manifiesto.json` | Trazabilidad de la corrida (datos, configuración, código) |
+| `scripts/anexo_h_contraste.py` | Anexo H — reproduce el contraste estadístico |
 
-La máquina de desarrollo no necesita Python: todo corre en Docker con las
-versiones fijadas.
+## Reproducibilidad
+
+- **Sin Python local**: todo corre en Docker con las versiones fijadas.
+- **Configuración declarada**: cada corrida se define en `config/config.yaml`;
+  cada variante experimental se registra con `--anular clave=valor` y queda
+  asentada en el manifiesto, de modo que dos corridas distintas nunca pueden
+  confundirse.
+- **Manifiesto por corrida**: registra el SHA-256 del snapshot de datos, la
+  configuración efectiva y la versión del código con que se obtuvo cada
+  resultado.
+- **Contraste sobre lo publicado**: las pruebas estadísticas se ejecutan sobre
+  la misma `matriz_contraste.csv` que se publica como salida — lo reportado en
+  el documento y lo reproducible son el mismo archivo.
+
+## Cómo ejecutarlo
 
 ```bash
 docker compose build
-```
 
-### 1 · Congelar el snapshot de datos (una sola vez)
-
-El esquema del sistema de origen —nombres de base, esquema, tabla y columnas— no
-está en el repositorio: es información de la empresa, cubierta por el mismo
-acuerdo de confidencialidad que los datos. Se declara en un archivo local que no
-se versiona.
-
-```bash
-cp config/extraccion.ejemplo.yaml config/extraccion.local.yaml
-# completar config/extraccion.local.yaml con el esquema real
-
-export TFG_DB_HOST=... TFG_DB_PORT=... 
-export TFG_DB_NAME=... TFG_DB_USER=... TFG_DB_PASSWORD=...
+# 1) Congelar el snapshot de datos (requiere acceso a la fuente; ver Confidencialidad)
 docker compose run --rm tfg python scripts/extraer_snapshot.py
-```
 
-Produce `datos/crudo/ventas_novapack.csv` + `manifiesto_extraccion.json` con el
-SHA-256. Los códigos de SKU se seudonimizan por defecto (`SKU-0001`, …) porque
-`errores_por_serie.csv` se adjunta como anexo del documento; la tabla de
-correspondencia queda en `datos/crudo/mapeo_sku.csv`, que no se versiona.
-
-A partir de ese momento el pipeline **no vuelve a consultar la base de datos**.
-
-### 2 · Inspeccionar y calibrar los criterios de inclusión
-
-```bash
+# 2) Inspeccionar los datos y calibrar los criterios de inclusión
 docker compose run --rm tfg python main.py inspeccionar
-```
 
-Escribe `salidas/inspeccion_datos.txt`. **Detenerse a leerlo** antes de seguir:
-ahí se deciden los umbrales de `inclusion` en `config/config.yaml`, y el N
-resultante es el tamaño de la muestra que se declara en la tesis.
-
-### 3 · Ejecutar el experimento
-
-```bash
+# 3) Ejecutar el experimento completo
 docker compose run --rm tfg python main.py ejecutar
-```
 
-### 4 · Ablaciones — cambiar una decisión y volver a medir
-
-`--anular` cambia una clave de la configuración para una corrida, sin duplicar el
-archivo. La anulación queda registrada en el manifiesto, así que dos corridas con
-ablaciones distintas nunca pueden confundirse (sus hashes de configuración
-difieren). Solo se pueden anular claves **existentes**: una errata falla en vez de
-correr en silencio con el valor viejo.
-
-```bash
-# ¿Qué pasa si el motor elige con la regla nativa del sistema en producción?
-docker compose run --rm tfg python main.py ejecutar \
-  --anular modelos.motor_regla=mae_mas_bias \
-  --anular salidas.directorio=salidas_ablacion_mae_mas_bias
-
-# ¿Y si se exige más historia para entrar en la muestra?
-docker compose run --rm tfg python main.py ejecutar \
-  --anular inclusion.historial_minimo_meses=48 \
-  --anular salidas.directorio=salidas_historial_48
-```
-
-### 5 · Visor — el experimento completo en el navegador
-
-```bash
-docker compose up -d visor       # -> http://localhost:8501
-```
-
-SPA React (MUI + ECharts) servida por nginx, de **solo lectura** sobre
-`salidas*/`: el flujo etapa por etapa (con sus conteos y decisiones), la
-inspección interactiva, el dashboard de resultados, la optimización de cada
-modelo, la selección del motor, el contraste estadístico y un comparador de
-corridas para las ablaciones. **Sin backend**: los filtros son estado del
-cliente (instantáneos) y no hay servidor de aplicación que mantener ni que
-pueda caerse.
-
-Tres reglas lo gobiernan:
-
-1. **El pipeline es la única fuente de verdad.** El visor no calcula resultados
-   ni escribe nada (montaje de solo lectura); si un número no está en
-   `salidas/`, el lugar de calcularlo es el pipeline. nginx **niega** todo lo
-   que no sea `salidas*/`: el snapshot confidencial responde 403 aunque esté en
-   el montaje.
-2. **Todo se descubre por convención.** Cada `salidas*/` con manifiesto es una
-   corrida (el selector y el comparador las levantan solos); cada CSV/PNG nuevo
-   aparece en *Artefactos*; cada etapa registrada con `reporte.etapa(...)`
-   aparece en *Flujo*; cada archivo nuevo en `visor/src/vistas/` que exporte
-   `vista` es una vista nueva (registro por `import.meta.glob`, sin lista
-   central).
-3. **El typecheck es el gate del build**: `docker compose build visor` corre
-   `tsc` + `vite build`; sin types verdes no hay imagen.
-
-Para desarrollar el visor con HMR (tu flujo de siempre):
-
-```bash
-docker compose --profile dev up visor-dev    # -> http://localhost:5173
-```
-
-### Pruebas
-
-```bash
+# Pruebas automatizadas (contrato de datos, pipeline y confidencialidad)
 docker compose run --rm tfg python -m pytest -q
 ```
 
----
+El **visor** permite explorar las corridas desde el navegador, en modo de solo
+lectura: resultados por modelo, selección del motor, contraste estadístico y
+comparación entre corridas.
 
-## Salidas
-
-Todo va a `salidas/`. Cada archivo alimenta un punto concreto del documento:
-
-| Archivo | Destino en la tesis |
-|---|---|
-| `inspeccion_datos.txt` | Criterios de inclusión y exclusión; N de la muestra |
-| `cohorte_flujo.csv` | Diagrama de flujo de la muestra, criterio por criterio |
-| `errores_por_serie.csv` | Insumo de las pruebas; se adjunta como anexo |
-| `tabla8_resultados.csv` | **Tabla 8** — MAE, MAPE, RMSE, Bias por modelo |
-| `resumen_metricas.csv` | Tabla 8 ampliada, con MASE y medianas |
-| `pruebas_estadisticas.txt` | Apartado «Contraste estadístico de la hipótesis» |
-| `seleccion_motor.csv` | Evidencia de la selección por serie |
-| `victorias_por_modelo.csv`, `nemenyi.csv`, `rangos_friedman.csv` | Anexos del contraste |
-| `parametros_por_serie.csv` | α de cada serie en los modelos con parámetro |
-| `lightgbm_importancias.csv` | Importancia de las variables |
-| `figura2_error.png` | **Figura 2** — error compuesto por modelo |
-| `figura3_dispersion.png` | **Figura 3** — MAE contra Bias por serie |
-| `figura4_diferencia_critica.png` | Diagrama de diferencia crítica (complementario) |
-| `manifiesto.json` | Trazabilidad y reproducibilidad (RN-6) |
-
----
+```bash
+docker compose up -d visor        # -> http://localhost:8501
+```
 
 ## Confidencialidad
 
-El histórico de NOVAPACK está cubierto por un acuerdo de confidencialidad
-(Anexo B de la tesis), y con él el esquema interno del sistema de origen. Este
-repositorio se publica: el Anexo G enlaza el código.
+El histórico de ventas de NOVAPACK S.A. está cubierto por un acuerdo de
+confidencialidad (Anexo B del documento), y con él el esquema interno del
+sistema de origen. Por eso **los datos no están en este repositorio** y el
+pipeline se ejecuta sobre un snapshot local que no se versiona. Tres barreras
+lo garantizan:
 
-Tres barreras, en orden de fiabilidad decreciente:
+1. **`.gitignore`** — `datos/crudo/`, `salidas*/` y la configuración de
+   extracción local nunca se versionan.
+2. **Seudonimización** — los códigos de producto se reemplazan al extraer
+   (`SKU-0001`, …); la tabla de correspondencia queda fuera del repositorio.
+3. **Control automático** — `tests/test_confidencialidad.py` revisa todos los
+   archivos que git rastrea buscando nombres reales, identificadores del
+   sistema de origen y credenciales; la suite falla si encuentra algo.
 
-1. **`.gitignore`** — `datos/crudo/`, `salidas*/` y `config/extraccion.local.yaml`
-   nunca se versionan.
-2. **Seudonimización** — los códigos de producto se reemplazan al extraer, porque
-   `errores_por_serie.csv` se adjunta como anexo. La correspondencia queda fuera
-   del repositorio.
-3. **Control automático** — `tests/test_confidencialidad.py` revisa **los
-   archivos que git rastrea** buscando nombres de la empresa, de bases, de
-   esquemas, direcciones IP, credenciales y etiquetas reales de regional. Falla
-   la suite si encuentra algo. Revisar esto a mano antes de cada publicación no
-   funciona: basta un descuido una vez.
+Sin el snapshot, el pipeline no puede ejecutarse fuera de la empresa; el
+repositorio documenta el procedimiento completo, y los resultados publicados en
+el documento llevan los hashes de su manifiesto para su verificación.
 
-Si el control marca un falso positivo, se agrega a `EXCEPCIONES` **con el motivo
-escrito**. Una excepción sin justificación es una excepción que dentro de seis
-meses nadie recuerda por qué está.
+## Estructura del repositorio
 
----
-
-## Estructura
-
-Este proyecto es una carpeta dentro del repositorio de la tesis:
-
-```
-TFG/                            <- raíz del repositorio
-├── README.md
-├── documento/                  <- el documento oficial y sus anexos
-└── motor-pronostico-novapack/  <- ESTA carpeta: el análisis cuantitativo
-```
-
-Todos los comandos de este archivo se corren **desde esta carpeta**. El
-`docker-compose.yml` monta el repositorio entero en `/repo` porque el manifiesto
-necesita el `.git`, que vive un nivel más arriba.
-
-```
-src/
-  config.py      configuración validada — todas las decisiones metodológicas
-  carga.py       RF-1 · lectura de CSV/Excel y conversión de tipos
-  inspeccion.py  RF-2 · informe descriptivo (CRISP-DM: comprensión de datos)
-  series.py      RF-3 · panel mensual por SKU–canal–regional
-  particion.py   RF-4 · tres bloques + criterios de inclusión
-  features.py    RF-5 · variables derivadas, sin fuga temporal
-  modelos/       RF-6 · los once brazos
-  metricas.py    RF-7 · MAE, RMSE, MAPE, Bias, MASE
-  pruebas.py     RF-8 · Shapiro, Wilcoxon, Friedman + Nemenyi
-  figuras.py     RF-9 · figuras del documento
-  reporte.py     RF-10 · salidas y manifiesto
-scripts/
-  extraer_snapshot.py   extracción y congelado del histórico
-tests/           pytest — único lugar donde se admiten datos sintéticos (RN-1)
-```
-
-### Desviaciones respecto de la estructura sugerida en §5
-
-Se documentan aquí para que el lector pueda seguir la correspondencia:
-
-- `src/modelos/suavizado.py` y `src/modelos/croston.py` no estaban en la
-  estructura original: aparecen al incorporar los tres modelos estadísticos
-  clásicos que pidió la dirección del trabajo.
-- Los criterios de inclusión viven en `particion.py` y no en un módulo aparte,
-  porque solo tienen sentido definidos respecto del bloque de entrenamiento.
-- `scripts/extraer_snapshot.py` y `main.py` se agregan para separar la
-  extracción (que habla con la base de datos, una vez) del pipeline (que nunca
-  lo hace).
+| Ruta | Contenido |
+|---|---|
+| `main.py`, `src/` | El pipeline del experimento (etapas, modelos, reporte) |
+| `scripts/` | Extracción del snapshot, ajuste de modelos y Anexo H |
+| `tests/` | Contrato de datos, pipeline y control de confidencialidad |
+| `visor/` | Visor de corridas (React + nginx, solo lectura) |
+| `config/` | Configuración declarada del experimento |
+| `REQUERIMIENTOS.md` | Especificación completa: requerimientos y reglas RN-1 a RN-6 |
