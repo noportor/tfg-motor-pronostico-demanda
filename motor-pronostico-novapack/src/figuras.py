@@ -216,7 +216,7 @@ def figura_unidad_analisis(
     izq.set_xticklabels([("10+" if k == 10 else str(int(k))) for k in conteo.index])
     izq.set_xlabel("Combinaciones canal-regional")
     izq.set_ylabel("SKUs")
-    izq.set_title("¿En cuántas combinaciones\nvive cada SKU?", fontsize=9)
+    izq.set_title("(a) ¿En cuántas combinaciones\nvive cada SKU?", fontsize=9)
     # La barra atenuada era la única codificación sin decodificar en la
     # figura. Arriba a la IZQUIERDA: la moda de la distribución está en 7-9
     # combinaciones y la esquina derecha cae sobre esas barras.
@@ -239,7 +239,7 @@ def figura_unidad_analisis(
                    f"({_es_entero(len(correlaciones))} SKUs con correlación "
                    "calculable)")
     der.set_ylabel("SKUs")
-    der.set_title("¿Se mueven juntas las\ncombinaciones de un SKU?", fontsize=9)
+    der.set_title("(b) ¿Se mueven juntas las\ncombinaciones de un SKU?", fontsize=9)
 
     figura.tight_layout()
     return _guardar(figura, destino)
@@ -282,7 +282,7 @@ def figura_muestra_sensibilidad(
          for p in pasos["paso"]], fontsize=7.5
     )
     izq.set_xlabel("Series")
-    izq.set_title("La cascada de la muestra", fontsize=9)
+    izq.set_title("(a) La cascada de la muestra", fontsize=9)
     izq.grid(axis="y", visible=False)
     # Margen amplio: la etiqueta de la barra más larga tiene que caber ENTERA
     # dentro del panel (con 0.28 el spine derecho tachaba los números).
@@ -325,7 +325,7 @@ def figura_muestra_sensibilidad(
     der.xaxis.set_major_formatter(FuncFormatter(lambda v, _: _es(v, 2)))
     # Título de UNA línea: la segunda línea parentética quedaba en la misma
     # base que el título del panel izquierdo y se leían como una sola frase.
-    der.set_title("Sensibilidad del umbral de ceros", fontsize=9)
+    der.set_title("(b) Sensibilidad del umbral de ceros", fontsize=9)
     # Tres líneas cortas: en dos líneas, la primera se extendía hasta cruzarse
     # con el tramo inicial de la curva de N.
     der.text(0.97, 0.05,
@@ -513,7 +513,7 @@ def figura_casos(
         # Sin margen automático a la derecha: dejaba una franja blanca DESPUÉS
         # del sombreado de prueba que sugería datos posteriores inexistentes.
         eje.set_xlim(meses[0].ordinal - 0.5, meses[-1].ordinal + 0.5)
-        eje.set_title(etiqueta, fontsize=8.5)
+        eje.set_title(f"({chr(97 + indice)}) {etiqueta}", fontsize=8.5)
         if indice % 2 == 0:
             eje.set_ylabel("Demanda (unidades)", fontsize=8)
         marcas = [m for m in meses if m.month == 4][::2]
@@ -944,3 +944,203 @@ def figura4_diferencia_critica(
     figura.savefig(destino)
     plt.close(figura)
     return destino
+
+
+#: Nombres legibles de las features del modelo global. Lo que no esté acá se
+#: muestra con su nombre técnico — mejor un nombre crudo que uno inventado.
+ETIQUETAS_FEATURES = {
+    "rezago_1": "venta del mes anterior (rezago 1)",
+    "rezago_2": "rezago 2 meses",
+    "rezago_3": "rezago 3 meses",
+    "rezago_6": "rezago 6 meses",
+    "rezago_12": "venta de hace 12 meses (rezago 12)",
+    "media_mismo_mes": "media del mismo mes en años previos",
+    "media_movil_3": "media móvil 3 meses",
+    "media_movil_6": "media móvil 6 meses",
+    "media_movil_12": "media móvil 12 meses",
+    "desv_movil_3": "desviación móvil 3 meses",
+    "desv_movil_6": "desviación móvil 6 meses",
+    "desv_movil_12": "desviación móvil 12 meses",
+    "max_movil_12": "máximo móvil 12 meses",
+    "min_movil_12": "mínimo móvil 12 meses",
+    "razon_interanual": "razón interanual (año contra año)",
+    "momentum_3_12": "momentum (media 3 m / media 12 m)",
+    "prop_ceros_movil_12": "proporción de meses sin venta (12 m)",
+    "meses_desde_venta": "meses desde la última venta",
+    "sku": "identidad del SKU",
+    "categoria": "categoría del producto",
+    "regional": "regional",
+    "canal": "canal",
+    "mes": "mes calendario",
+    "anio": "año",
+    "tendencia": "tendencia",
+    "precio_rezago_1": "precio del mes anterior",
+    "precio_delta_pct": "variación porcentual del precio",
+    "perdidas_rezago_1": "venta perdida del mes anterior",
+    "perdidas_movil_12": "venta perdida móvil 12 meses",
+    "quiebre_pct_movil_3": "quiebres de inventario (móvil 3 m)",
+    "quiebre_pct_rezago_1": "quiebres de inventario (mes anterior)",
+    "tc_rezago_1": "tipo de cambio del mes anterior",
+    "tc_delta_pct": "variación porcentual del tipo de cambio",
+}
+
+_MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun",
+                 "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def _rotulo_meses(meses: list[int]) -> str:
+    nombres = [_MESES_CORTOS[m - 1] for m in meses]
+    if len(nombres) == 1:
+        return nombres[0]
+    return ", ".join(nombres[:-1]) + " y " + nombres[-1]
+
+
+def figura_contribuciones(
+    tabla: pd.DataFrame, meses: list[int], destino: Path,
+    dpi: int = 300, top: int = 10,
+) -> Path:
+    """F14 — Contribuciones TreeSHAP: qué variables pesan, y cuánto en el pico.
+
+    Barras horizontales emparejadas por variable: la oscura es la contribución
+    absoluta media en los meses de pico estacional, la clara con trama en el
+    resto del año. Junto a la barra del pico va la contribución CON SIGNO en
+    esos meses: dice hacia dónde empuja la variable cuando el pico ocurre, no
+    solo cuánto pesa. Responde la pregunta del tribunal con especificidad:
+    variables concretas, magnitudes concretas, dirigidas al fenómeno.
+    """
+    _estilo(dpi)
+    datos = tabla.head(top).iloc[::-1].reset_index(drop=True)
+    n = len(datos)
+    posiciones = np.arange(n)
+    alto = 0.36
+
+    figura, eje = plt.subplots(figsize=(7.0, max(3.6, 0.52 * n + 1.2)))
+
+    eje.barh(posiciones + alto / 2, datos["contrib_abs_media_pico"],
+             height=alto, color="0.30", edgecolor="black", linewidth=0.6,
+             label=f"meses de pico ({_rotulo_meses(meses)})")
+    eje.barh(posiciones - alto / 2, datos["contrib_abs_media_resto"],
+             height=alto, color="0.85", hatch="///", edgecolor="black",
+             linewidth=0.6, label="resto del año")
+
+    for i, fila in datos.iterrows():
+        eje.text(fila["contrib_abs_media_pico"], i + alto / 2,
+                 f"  {_es(fila['contrib_media_pico'], 2, signo=True)}",
+                 va="center", ha="left", fontsize=7.0)
+
+    etiquetas = [ETIQUETAS_FEATURES.get(f, f) for f in datos["feature"]]
+    eje.set_yticks(posiciones)
+    eje.set_yticklabels(etiquetas, fontsize=8)
+    eje.set_xlabel("Contribución TreeSHAP media |φ| a la predicción mensual (unidades)")
+    eje.legend(frameon=False, fontsize=8, ncols=2,
+               loc="lower right", bbox_to_anchor=(1.0, 1.005))
+    eje.grid(axis="y", visible=False)
+    eje.set_xlim(left=0)
+    eje.margins(x=0.18)
+    figura.text(
+        0.01, -0.04,
+        "El número junto a cada barra oscura es la contribución media CON "
+        "SIGNO en los meses de pico: positiva empuja el pronóstico al alza.",
+        fontsize=7.5, ha="left", va="top",
+    )
+    return _guardar(figura, destino)
+
+
+def figura_error_por_mes(
+    tabla: pd.DataFrame, meses: list[int], destino: Path, dpi: int = 300,
+) -> Path:
+    """F16 — WMAPE valorizado por mes del bloque de prueba, por brazo.
+
+    La lectura que la tabla por estrato no puede dar: dentro del pico ganan
+    los brazos con memoria estacional, y a la SALIDA del pico el método que
+    solo mira el mes anterior queda expuesto — arrastra el nivel de campaña a
+    un mes que ya no lo tiene. Las franjas grises marcan los meses de pico
+    (la misma regla declarada del manifiesto).
+    """
+    _estilo(dpi)
+    ancho = tabla.pivot(index="periodo", columns="modelo", values="wmape_val")
+    ancho = ancho.sort_index()
+    periodos = [pd.Period(p, freq="M") for p in ancho.index]
+    x = np.arange(len(periodos))
+    grises = ["0.0", "0.4", "0.6", "0.75"]
+
+    figura, eje = plt.subplots(figsize=(7.2, 4.0))
+    for i in x:
+        if periodos[i].month in meses:
+            eje.axvspan(i - 0.5, i + 0.5, color="0.92", zorder=0)
+
+    orden = list(ancho.columns)
+    for k, modelo in enumerate(orden):
+        eje.plot(x, ancho[modelo].to_numpy(dtype=float),
+                 color=grises[k % len(grises)],
+                 marker=MARCADORES[k % len(MARCADORES)], markersize=4,
+                 linewidth=1.3, label=modelo)
+
+    eje.set_xticks(x)
+    eje.set_xticklabels(
+        [f"{_MESES_CORTOS[p.month - 1]}-{str(p.year)[2:]}" for p in periodos],
+        fontsize=7.5,
+    )
+    eje.set_ylabel("WMAPE valorizado del mes (%)")
+    eje.set_xlabel("mes del bloque de prueba")
+    eje.legend(frameon=False, fontsize=8, ncols=min(4, len(orden)),
+               loc="lower right", bbox_to_anchor=(1.0, 1.005))
+    eje.grid(axis="x", visible=False)
+    eje.set_ylim(bottom=0)
+    figura.text(
+        0.01, -0.05,
+        "Franjas grises: meses de pico estacional (participación mensual de la "
+        "demanda valorizada de entrenamiento sobre el umbral declarado). "
+        "WMAPE del mes: error absoluto valorizado sobre demanda valorizada.",
+        fontsize=7.5, ha="left", va="top",
+    )
+    return _guardar(figura, destino)
+
+
+def figura_pareto(pareto: pd.DataFrame, destino: Path, dpi: int = 300) -> Path:
+    """F15 — Pareto de la demanda valorizada por SKU.
+
+    La curva de concentración que fundamenta la ponderación por costo de la
+    métrica D: si una fracción chica del padrón concentra el valor, promediar
+    errores sin ponderar trataría igual a un producto marginal y a uno
+    crítico. Se anota el valor acumulado por el 20 % superior del padrón y la
+    fracción de SKUs que acumula el 80 % del valor.
+    """
+    _estilo(dpi)
+    x = np.concatenate([[0.0], pareto["fraccion_skus_pct"].to_numpy(dtype=float)])
+    y = np.concatenate([[0.0], pareto["acumulada_pct"].to_numpy(dtype=float)])
+
+    figura, eje = plt.subplots(figsize=(6.4, 4.2))
+    eje.plot(x, y, color="0.15", linewidth=1.6)
+    eje.plot([0, 100], [0, 100], color="0.7", linewidth=0.9, linestyle="--")
+    eje.text(70, 64, "distribución uniforme", fontsize=7.5, color="0.45",
+             rotation=38, ha="center", va="center")
+
+    valor_en_20 = float(np.interp(20.0, x, y))
+    eje.plot([20], [valor_en_20], marker="o", color="0.15", markersize=5)
+    eje.annotate(
+        f"el 20 % de los SKU concentra\nel {_es(valor_en_20, 1)} % del valor",
+        xy=(20, valor_en_20), xytext=(30, valor_en_20 - 16),
+        fontsize=8, ha="left", va="top",
+        arrowprops={"arrowstyle": "-", "color": "0.4", "linewidth": 0.7},
+    )
+    skus_para_80 = float(np.interp(80.0, y, x))
+    eje.plot([skus_para_80], [80.0], marker="s", color="0.15", markersize=5)
+    eje.annotate(
+        f"el {_es(skus_para_80, 1)} % de los SKU\nacumula el 80 % del valor",
+        xy=(skus_para_80, 80.0), xytext=(skus_para_80 + 12, 84),
+        fontsize=8, ha="left", va="bottom",
+        arrowprops={"arrowstyle": "-", "color": "0.4", "linewidth": 0.7},
+    )
+
+    eje.set_xlim(0, 100)
+    eje.set_ylim(0, 100)
+    eje.set_xlabel("SKUs ordenados por demanda valorizada (% acumulado del padrón)")
+    eje.set_ylabel("demanda valorizada (% acumulado)")
+    figura.text(
+        0.01, -0.05,
+        f"{_es_entero(len(pareto))} SKU con costo en el maestro; demanda del "
+        "período completo del estudio, valorizada al costo unitario.",
+        fontsize=7.5, ha="left", va="top",
+    )
+    return _guardar(figura, destino)

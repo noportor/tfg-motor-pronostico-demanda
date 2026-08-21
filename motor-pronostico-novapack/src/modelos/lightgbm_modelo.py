@@ -140,3 +140,27 @@ class ModeloLightGBM:
         })
         ancho = largo.pivot(index="periodo", columns="serie", values="prediccion")
         return ancho.reindex(index=datos.index, columns=datos.columns)
+
+    def contribuciones(self, datos: pd.DataFrame) -> pd.DataFrame:
+        """Contribuciones TreeSHAP de cada feature a cada predicción.
+
+        Usa el TreeSHAP nativo de LightGBM (``pred_contrib=True``): para cada
+        fila, la predicción es exactamente el valor base más la suma de las
+        contribuciones — una descomposición aditiva y exacta, no una
+        aproximación. No agrega dependencias al entorno.
+        """
+        if self.booster is None:
+            raise RuntimeError("Hay que llamar a ajustar() antes que a contribuciones().")
+
+        filas = self._filas_de(datos)
+        matriz = self.booster.predict(
+            filas[self.columnas],
+            num_iteration=self.booster.best_iteration,
+            pred_contrib=True,
+        )
+        matriz = np.asarray(matriz, dtype=float)
+        tabla = pd.DataFrame(matriz[:, :-1], columns=self.columnas)
+        tabla["valor_base"] = matriz[:, -1]
+        tabla["serie"] = filas["serie"].to_numpy()
+        tabla["periodo"] = filas["periodo"].to_numpy()
+        return tabla
