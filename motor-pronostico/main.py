@@ -29,8 +29,8 @@ if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
 from src import (
-    carga, eventos, features, figuras, inspeccion, metricas, multihorizonte,
-    particion, pruebas, series, unidad_analisis,
+    carga, eventos, explicacion, features, figuras, inspeccion, metricas,
+    multihorizonte, particion, pruebas, series, unidad_analisis,
 )
 from src.exogenas import cargar_exogenas
 from src.config import cargar_config, gestion_de
@@ -179,6 +179,24 @@ def dibujar_catalogo(cfg, insumos: dict, directorio: Path) -> list[Path]:
         directorio / "figura12_diferencia_critica.png", dpi=dpi,
         alfa=friedman["alfa"],
     ))
+
+    if insumos.get("contribuciones") is not None:
+        rutas.append(figuras.figura_contribuciones(
+            insumos["contribuciones"], insumos["meses_pico"],
+            directorio / "figura14_contribuciones.png", dpi=dpi,
+        ))
+
+    if insumos.get("pareto") is not None:
+        rutas.append(figuras.figura_pareto(
+            insumos["pareto"],
+            directorio / "figura15_pareto.png", dpi=dpi,
+        ))
+
+    if insumos.get("error_por_mes") is not None:
+        rutas.append(figuras.figura_error_por_mes(
+            insumos["error_por_mes"], insumos["meses_pico"],
+            directorio / "figura16_error_por_mes.png", dpi=dpi,
+        ))
 
     return rutas
 
@@ -967,6 +985,85 @@ def comando_ejecutar(cfg) -> int:
     )
     _fin(inicio)
 
+    # --- 9b. Explicación del modelo y concentración del valor ---------------
+    # Las dos respuestas específicas que un tribunal con perfil de ML y de
+    # economía va a pedir: QUÉ variables influyen cuando el modelo anticipa el
+    # pico (TreeSHAP dirigido al fenómeno) y QUÉ fracción del padrón concentra
+    # el valor (el fundamento del WMAPE valorizado).
+    inicio = _paso(f"9b/{total}", "Explicación del modelo global (TreeSHAP) "
+                                  "y Pareto del valor")
+    tabla_contribuciones = None
+    tabla_pareto = None
+    tabla_error_mes = None
+    meses_de_pico: list[int] = []
+    modelo_lgbm = modelos.get("lightgbm")
+    if maestro.disponible and modelo_lgbm is not None:
+        meses_de_pico = explicacion.meses_pico(
+            panel_entrenamiento, maestro.costo_por_serie
+        )
+        contribuciones_crudas = modelo_lgbm.contribuciones(panel_prueba)
+        tabla_contribuciones = explicacion.agregar_contribuciones(
+            contribuciones_crudas, modelo_lgbm.columnas, meses_de_pico
+        )
+        reporte.tabla("contribuciones_shap.csv", tabla_contribuciones)
+        tabla_pareto = explicacion.pareto_valorizado(
+            panel, maestro.costo_por_serie
+        )
+        reporte.tabla("pareto_valorizado.csv", tabla_pareto)
+
+        brazos_mes = [m for m in (
+            str(cfg.modelos["benchmark_naive"]),
+            str(cfg.modelos["benchmark_promedio_movil"]),
+            "motor", "lightgbm",
+        ) if m in predicciones]
+        tabla_error_mes = explicacion.error_por_mes(
+            panel_prueba, predicciones, maestro.costo_por_serie, brazos_mes
+        )
+        reporte.tabla("error_por_mes.csv", tabla_error_mes)
+        tabla_temporada = explicacion.error_por_temporada(
+            panel_prueba, predicciones, maestro.costo_por_serie,
+            meses_de_pico, brazos_mes
+        )
+        reporte.tabla("error_por_temporada.csv", tabla_temporada)
+
+        dominante = tabla_contribuciones.iloc[0]
+        print(f"      meses de pico (valorizado, entrenamiento): {meses_de_pico}")
+        print(f"      variable dominante: {dominante['feature']} "
+              f"({dominante['participacion_pct']:.1f} % de la contribución "
+              "absoluta)")
+        reporte.etapa(
+            "explicacion",
+            "Contribuciones TreeSHAP del modelo global y Pareto del valor",
+            rf="RF-7",
+            entrada={
+                "predicciones_explicadas": int(len(contribuciones_crudas)),
+                "skus_en_pareto": int(len(tabla_pareto)),
+            },
+            salida={"features_explicadas": int(len(tabla_contribuciones))},
+            decisiones={
+                "metodo": "TreeSHAP nativo de LightGBM (pred_contrib=True): "
+                          "descomposición aditiva EXACTA de cada predicción, "
+                          "sin dependencias nuevas",
+                "bloque_explicado": "prueba",
+                "umbral_pico": "participación mensual > "
+                               f"{explicacion.UMBRAL_FACTOR_PICO}/12 de la "
+                               "demanda valorizada de entrenamiento",
+                "meses_pico": meses_de_pico,
+            },
+            artefactos=["contribuciones_shap.csv", "pareto_valorizado.csv",
+                        "error_por_mes.csv", "error_por_temporada.csv"],
+            notas=[
+                "La contribución media CON SIGNO en los meses de pico dice "
+                "hacia dónde empuja cada variable cuando el pico ocurre; la "
+                "absoluta, cuánto pesa. El Pareto por SKU es el fundamento "
+                "empírico de la ponderación por costo de la métrica D.",
+            ],
+            duracion_s=time.perf_counter() - inicio,
+        )
+    else:
+        print("      sin maestro de costos o sin brazo lightgbm: se omite")
+    _fin(inicio)
+
     # --- 10. Pruebas estadísticas ------------------------------------------
     inicio = _paso(f"10/{total}", "Contraste estadístico")
     metrica = cfg.pruebas.metrica_contraste
@@ -1189,6 +1286,10 @@ def comando_ejecutar(cfg) -> int:
             "n_bloques": resultados["friedman"].n_bloques,
             "alfa": cfg.pruebas.alfa,
         },
+        "contribuciones": tabla_contribuciones,
+        "meses_pico": meses_de_pico,
+        "pareto": tabla_pareto,
+        "error_por_mes": tabla_error_mes,
     }
 
     if maestro.disponible:

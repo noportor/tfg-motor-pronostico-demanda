@@ -75,8 +75,8 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     _estilo(300)
-    protocolos = (("un_paso", "Un paso (D, %)"),
-                  ("multihorizonte", "Multihorizonte global (D(h), %)"))
+    protocolos = (("un_paso", "(a) Un paso (D, %)"),
+                  ("multihorizonte", "(b) Multihorizonte global (D(h), %)"))
     figura, ejes = plt.subplots(1, 2, figsize=(7.2, 3.4), sharey=False)
 
     # Escala vertical COMÚN: con límites por panel, barras de valores
