@@ -1,0 +1,247 @@
+# =============================================================================
+# CORRIDA EXPLORATORIA ML2 - V8: la conmutacion por regimen (prueba g2025)
+# =============================================================================
+# La V7 midio que NINGUN menu estatico domina ambos regimenes: el curado gana
+# el anio normal (mezcla_prom 67,8 / 72,9) y el diverso gana el quiebre
+# (77,7-80,7 / 70,8-74,2), porque en el quiebre todo el menu curado comparte
+# el signo del sesgo. La V8 convierte la disyuntiva en SISTEMA:
+#
+#   mezcla_conmutada = (1-lambda) * prom[menu curado] + lambda * prom[menu diverso]
+#
+# con lambda decidido por un DETECTOR causal: el sesgo valorizado del sistema
+# base sobre los ultimos 3 meses YA OBSERVADOS, con rampa declarada entre
+# 10 % (activacion) y 20 % (quiebre pleno). La regla de mezcla se fija a
+# priori en el promedio simple (la leccion M4, tres veces confirmada); los
+# umbrales son constantes DECLARADAS, no calibradas mirando prueba, y la
+# senal mensual se persiste (conmutador_senal.csv) para la sensibilidad
+# post-hoc. Los menus vuelven a ser: candidatos = el curado de la V5 (asi
+# mezcla_prom/pond/h reproducen la V5 y sirven de control de determinismo),
+# candidatos_quiebre = el diverso de la V7.
+#
+# LIMITACION DECLARADA: el diseno del detector se informo en la evidencia de
+# los DOS anios medidos (g2025/g2026); su validez fuera de muestra queda
+# pendiente de gestiones futuras. Esta es la gemela del quiebre: mismo
+# sistema sobre el protocolo desplazado del blindaje. Objetivo medido: ~67,8/72,9 en normal y
+# ~77-80/70-74 en quiebre, con UN solo sistema.
+# =============================================================================
+
+datos:
+  archivo: "datos/crudo/ventas_novapack.csv"
+  columnas:
+    fecha: "fecha"
+    sku: "sku"
+    canal: "canal"
+    regional: "regional"
+    cantidad: "cantidad"
+    categoria: "categoria"
+    precio: "precio"
+    perdidas: "perdidas"
+  separador: ","
+  codificacion: "utf-8"
+
+periodo:
+  mes_inicio_gestion: 4
+  inicio: "2017-04"
+  # El histórico se corta al cierre de la prueba desplazada: los meses de
+  # g2026 no existen en esta corrida (ni como panel ni como respaldo).
+  fin: "2025-03"
+
+poblacion:
+  categorias:
+    - "PLASTICOS"
+    - "PAPELES"
+    - "PAPEL FOTOCOPIA"
+    - "ESCRITURA Y TRAZADO"
+    - "CUADERNOS"
+
+particion:
+  fin_entrenamiento: "2023-03"
+  fin_validacion: "2024-03"
+
+series:
+  devoluciones: "descartar"
+  rellenar_ceros_intermedios: true
+
+evento_exogeno:
+  nombre: "covid19"
+  desde: "2020-03"
+  hasta: "2021-02"
+  tratamiento: "copiar_gestion_previa"
+
+inclusion:
+  historial_minimo_meses: 36
+  proporcion_maxima_ceros: 0.70
+  volumen_minimo_unidades: 50
+
+modelos:
+  activos:
+    - naive_m1
+    - naive_m1_gf
+    - ma_2
+    - ma_2_gf
+    - ma_12
+    - ma_12_gf
+    - exp_smooth_opt
+    - holt_winters
+    - croston
+    - lightgbm
+    # --- brazos ML2 ---
+    - lightgbm_directo
+    - dlinear
+    - nhits
+    - tft
+    - chronos
+    # --- segunda etapa (usan los pronósticos de los demás) ---
+    - mezcla_prom
+    - mezcla_pond
+    - mezcla_h
+    - mezcla_conmutada
+    - motor
+
+  benchmark_promedio_movil: "ma_12"
+  benchmark_naive: "naive_m1"
+
+  exp_smooth:
+    alfa_min: 0.05
+    alfa_max: 0.95
+    alfa_paso: 0.05
+
+  holt_winters:
+    periodo_estacional: 12
+    alfa_rejilla: [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+    beta_rejilla: [0.0, 0.05, 0.1, 0.2]
+    gamma_rejilla: [0.0, 0.05, 0.1, 0.2]
+
+  croston:
+    alfa_rejilla: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+
+  lightgbm:
+    objective: "tweedie"
+    tweedie_variance_power: 1.464977652919245
+    metric: "tweedie"
+    learning_rate: 0.05310654167584386
+    num_leaves: 137
+    min_data_in_leaf: 61
+    feature_fraction: 0.5778124801487501
+    bagging_fraction: 0.870285300844084
+    bagging_freq: 1
+    lambda_l2: 24.468189902436567
+    num_boost_round: 3000
+    early_stopping_rounds: 100
+    seed: 20260406
+    num_threads: 1
+    deterministic: true
+    force_row_wise: true
+    verbosity: -1
+
+  # --- Brazos neuronales (neuralforecast) ------------------------------------
+  # Configs congeladas de la V5 (las mejores MEDIDAS de cada arquitectura).
+  neuronales:
+    semilla: 20260408
+    horizonte: 12
+    input_size: 24
+    max_steps: 1500
+    tweedie_rho: 1.464977652919245
+    dlinear:
+      perdida: "mae"
+      moving_avg_window: 13
+    nhits:
+      # LIMPIO — declarado desde salidas_tuning_ml2/nhits_tuning_mejor.json
+      # (25 ensayos, fold interno g2024, D interna 67,8). La configuracion la
+      # elige la BUSQUEDA SOBRE VALIDACION, nunca el bloque de prueba.
+      perdida: "mae"
+      input_size: 12
+      learning_rate: 0.000811236813134289
+      scaler_type: "standard"
+    tft:
+      # LIMPIO — declarado desde salidas_tuning_ml2/tft_tuning_mejor.json
+      # (25 ensayos, fold interno g2024, D interna 68,0). La configuracion la
+      # elige la BUSQUEDA SOBRE VALIDACION, nunca el bloque de prueba.
+      perdida: "tweedie"
+      tweedie_rho: 1.405263790442798
+      input_size: 12
+      learning_rate: 0.0003237836489040023
+      scaler_type: "robust"
+      hidden_size: 64
+      exogenas:
+        mes: true
+        estaticas: ["categoria", "canal", "regional"]
+        historicas: ["precio_rezago_1", "tc_rezago_1"]
+
+  # --- Brazo fundacional (Chronos-Bolt) --------------------------------------
+  # Los factores por categoría se re-estiman solos sobre la validación
+  # desplazada (g2024, pre-crisis) — su fragilidad ante el quiebre de
+  # régimen de g2025 es parte de lo que esta corrida mide.
+  chronos:
+    checkpoint: "amazon/chronos-bolt-base"
+    contexto_maximo: 96
+    lote: 256
+    calibrar: "categoria"
+
+  # --- Mezcladores (V7: menú anti-régimen) ------------------------------------
+  # Menú ampliado con los brazos de diversidad de sesgo; los pesos se
+  # re-estiman solos sobre g2024.
+  mezclador:
+    candidatos:
+      - lightgbm
+      - chronos
+      - exp_smooth_opt
+      - holt_winters
+      - tft
+    candidatos_quiebre:
+      - lightgbm
+      - chronos
+      - exp_smooth_opt
+      - holt_winters
+      - tft
+      - nhits
+      - naive_m1
+    conmutador:
+      ventana_meses: 3
+      umbral_activacion_pct: 10
+      umbral_pleno_pct: 20
+
+  motor_regla: "mae_mas_bias"
+  motor_seleccion: "multihorizonte"
+
+features:
+  rezagos: [1, 2, 3, 6, 12]
+  ventanas_moviles: [3, 6, 12]
+  incluir_mes: true
+  incluir_anio: true
+  incluir_tendencia: true
+  categoricas: ["sku", "canal", "regional"]
+  v2:
+    categoria: true
+    precio: true
+    perdidas: true
+    quiebres: true
+    tipo_cambio: true
+    derivadas: true
+  tc_regimen_fijo: 6.96
+  archivo_quiebres: "datos/crudo/quiebres.csv"
+  archivo_tipo_cambio: "datos/crudo/tipo_cambio.csv"
+
+multihorizonte:
+  activo: true
+  horizonte_maximo: 12
+  origenes: "rodantes"
+  reentrenar_lightgbm: true
+  # Mismo diseño que la V5: el resultado negativo del directo re-entrenado
+  # también se somete al segundo año de prueba.
+  reentrenar_directo: true
+
+pruebas:
+  alfa: 0.05
+  alternativa: "less"
+  metrica_contraste: "error_compuesto_unidades"
+  shapiro_n_maximo: 5000
+  semilla: 20260406
+
+figuras:
+  dpi: 300
+  escala_grises: true
+  formato: "png"
+
+salidas:
+  directorio: "salidas_ml2_v9_blindaje"
