@@ -38,7 +38,7 @@ def _es(valor: float, decimales: int = 1, signo: bool = False) -> str:
     haría ambiguo cuál coma es cuál.
     """
     if valor is None or not np.isfinite(valor):
-        return "—"
+        return "n/d"
     plantilla = f"{{:{'+' if signo else ''},.{decimales}f}}"
     texto = plantilla.format(valor)
     if decimales:
@@ -837,7 +837,7 @@ def figura5_horizonte(
     )
     figura.text(
         0.01, -0.02,
-        "Cada punto agrega todos los orígenes que alcanzan ese horizonte — "
+        "Cada punto agrega todos los orígenes que alcanzan ese horizonte: "
         + ", ".join(f"h={h} ({int(n)})" for h, n in origenes_por_h.items())
         + " orígenes.\nLos horizontes largos se apoyan en pocos orígenes y se "
         "leen con esa cautela." + nota_recorte,
