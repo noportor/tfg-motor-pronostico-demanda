@@ -672,7 +672,6 @@ def figura3_dispersion(
         sharex=True, sharey=True, squeeze=False,
     )
 
-    fuera_total = 0
     for indice, nombre in enumerate(nombres):
         eje = ejes[indice // columnas][indice % columnas]
         tabla = errores[nombre][["mae", "bias"]].dropna()
@@ -680,7 +679,6 @@ def figura3_dispersion(
         y = tabla["mae"].to_numpy()
 
         dentro = (np.abs(x) <= limite_bias) & (y <= limite_mae)
-        fuera_total += int((~dentro).sum())
 
         eje.scatter(
             x[dentro], y[dentro], s=5, marker=MARCADORES[indice % len(MARCADORES)],
@@ -716,23 +714,8 @@ def figura3_dispersion(
     ejes[0][0].set_yscale("symlog", linthresh=1.0)
     ejes[0][0].set_ylim(-0.4, limite_mae * 1.06)
 
-    total_puntos = sum(len(errores[m]) for m in nombres)
     figura.supxlabel("Bias (%) — a la derecha, sobrestima", fontsize=9)
     figura.supylabel("MAE (unidades, escala logarítmica)", fontsize=9)
-    figura.text(
-        0.01, -0.01,
-        f"Eje horizontal recortado al percentil {_es(percentil_recorte, 0)} "
-        f"de |Bias| (±{_es(limite_bias, 0)} %); eje vertical al percentil "
-        f"99,5 del MAE ({_es(limite_mae, 0)} unidades), en escala logarítmica "
-        "simétrica con tramo lineal por debajo de 1.\n"
-        f"Quedan fuera del recuadro {_es_entero(fuera_total)} puntos de "
-        f"{_es_entero(total_puntos)} "
-        f"({_es(100 * fuera_total / max(total_puntos, 1), 1)} %). La cruz "
-        "marca la mediana de cada modelo, calculada sobre TODAS las series.\n"
-        "La columna de puntos en Bias = −100 % son series cuyo pronóstico "
-        "colapsa a cero en el bloque de prueba.",
-        fontsize=8, ha="left", va="top",
-    )
     figura.tight_layout()
 
     destino.parent.mkdir(parents=True, exist_ok=True)
@@ -818,31 +801,6 @@ def figura5_horizonte(
     eje.set_ylim(0, limite)
     eje.legend(frameon=False, fontsize=8, ncols=2)
 
-    fuera = [
-        (modelo, float(tabla[modelo].max()))
-        for modelo in tabla.columns if float(tabla[modelo].max()) > limite
-    ]
-    nota_recorte = ""
-    if fuera:
-        nota_recorte = (
-            f" Eje vertical recortado en {_es(limite, 0)} % (percentil 90 de "
-            "D); se salen del recuadro: "
-            + ", ".join(f"{m} (llega a {_es(v, 0)} %)"
-                        for m, v in sorted(fuera))
-            + "."
-        )
-
-    origenes_por_h = (
-        resumen_horizonte.groupby("horizonte")["n_origenes"].max().sort_index()
-    )
-    figura.text(
-        0.01, -0.02,
-        "Cada punto agrega todos los orígenes que alcanzan ese horizonte: "
-        + ", ".join(f"h={h} ({int(n)})" for h, n in origenes_por_h.items())
-        + " orígenes.\nLos horizontes largos se apoyan en pocos orígenes y se "
-        "leen con esa cautela." + nota_recorte,
-        fontsize=7.5, ha="left", va="top", wrap=True,
-    )
 
     destino.parent.mkdir(parents=True, exist_ok=True)
     figura.savefig(destino)
@@ -929,16 +887,6 @@ def figura4_diferencia_critica(
     eje.xaxis.set_major_formatter(FuncFormatter(lambda v, _: _es(v, 1)))
     eje.set_xlabel("Rango medio de Friedman (1 = mejor)")
     eje.grid(axis="y", visible=False)
-    # La CD y el N iban en el título; sin título (el epígrafe se escribe en el
-    # documento) son datos de la figura y se declaran en el pie.
-    nota_alfa = f"α = {_es(alfa, 2)}; " if alfa is not None else ""
-    figura.text(
-        0.01, -0.06,
-        f"{nota_alfa}{_es_entero(n_bloques)} series, {n} modelos. Los modelos "
-        "unidos por una barra horizontal no son distinguibles entre sí; la "
-        "regla superior muestra la longitud de la diferencia crítica (CD).",
-        fontsize=7.5, ha="left", va="top",
-    )
 
     destino.parent.mkdir(parents=True, exist_ok=True)
     figura.savefig(destino)
@@ -1037,12 +985,6 @@ def figura_contribuciones(
     eje.grid(axis="y", visible=False)
     eje.set_xlim(left=0)
     eje.margins(x=0.18)
-    figura.text(
-        0.01, -0.04,
-        "El número junto a cada barra oscura es la contribución media CON "
-        "SIGNO en los meses de pico: positiva empuja el pronóstico al alza.",
-        fontsize=7.5, ha="left", va="top",
-    )
     return _guardar(figura, destino)
 
 
@@ -1087,13 +1029,6 @@ def figura_error_por_mes(
                loc="lower right", bbox_to_anchor=(1.0, 1.005))
     eje.grid(axis="x", visible=False)
     eje.set_ylim(bottom=0)
-    figura.text(
-        0.01, -0.05,
-        "Franjas grises: meses de pico estacional (participación mensual de la "
-        "demanda valorizada de entrenamiento sobre el umbral declarado). "
-        "WMAPE del mes: error absoluto valorizado sobre demanda valorizada.",
-        fontsize=7.5, ha="left", va="top",
-    )
     return _guardar(figura, destino)
 
 
@@ -1137,10 +1072,4 @@ def figura_pareto(pareto: pd.DataFrame, destino: Path, dpi: int = 300) -> Path:
     eje.set_ylim(0, 100)
     eje.set_xlabel("SKUs ordenados por demanda valorizada (% acumulado del padrón)")
     eje.set_ylabel("demanda valorizada (% acumulado)")
-    figura.text(
-        0.01, -0.05,
-        f"{_es_entero(len(pareto))} SKU con costo en el maestro; demanda del "
-        "período completo del estudio, valorizada al costo unitario.",
-        fontsize=7.5, ha="left", va="top",
-    )
     return _guardar(figura, destino)
