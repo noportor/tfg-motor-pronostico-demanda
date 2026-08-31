@@ -90,6 +90,7 @@ def figura_perfil_categorias(
     estacionales: tuple[str, ...],
     destino: Path,
     dpi: int = 300,
+    mes_inicio: int = 4,
 ) -> Path:
     """F1 — Perfil mensual del valor por categoría (solo entrenamiento).
 
@@ -98,12 +99,19 @@ def figura_perfil_categorias(
     campaña. Las estacionales van en trazos oscuros con marcador; las
     recurrentes, en grises. La línea de reparto uniforme (100/12) es la vara.
 
+    El eje sigue el orden de la GESTIÓN comercial (abril a marzo), no el del
+    calendario: la campaña escolar (noviembre a febrero) queda entera en el
+    tramo final del eje, en vez de partida entre los dos extremos.
+
     Args:
-        valor_mensual: columnas ``categoria``, ``mes`` (1..12) y ``pct``
-            (participación del mes en el valor anual de SU categoría).
+        valor_mensual: columnas ``categoria``, ``mes`` (1..12, calendario) y
+            ``pct`` (participación del mes en el valor anual de SU categoría).
+        mes_inicio: mes calendario con que abre la gestión (4 = abril).
     """
     _estilo(dpi)
     figura, eje = plt.subplots(figsize=(7.0, 4.2))
+    nombres = ["ene", "feb", "mar", "abr", "may", "jun",
+               "jul", "ago", "sep", "oct", "nov", "dic"]
 
     estilos_estacionales = [
         dict(color="black", linestyle="-", marker="o", markersize=4, linewidth=1.8),
@@ -120,14 +128,15 @@ def figura_perfil_categorias(
     i_est = i_rec = 0
     for categoria in sorted(valor_mensual["categoria"].unique()):
         datos = valor_mensual.loc[valor_mensual["categoria"] == categoria]
-        datos = datos.sort_values("mes")
+        datos = datos.assign(pos=((datos["mes"] - mes_inicio) % 12) + 1)
+        datos = datos.sort_values("pos")
         if categoria in estacionales:
             estilo = estilos_estacionales[i_est % len(estilos_estacionales)]
             i_est += 1
         else:
             estilo = estilos_recurrentes[i_rec % len(estilos_recurrentes)]
             i_rec += 1
-        eje.plot(datos["mes"], datos["pct"], label=categoria, **estilo)
+        eje.plot(datos["pos"], datos["pct"], label=categoria, **estilo)
 
     eje.axhline(100 / 12, color="0.7", linewidth=0.8, linestyle="--")
     # Anotación ENTERA por encima de la línea de referencia (va="bottom"): con
@@ -136,7 +145,11 @@ def figura_perfil_categorias(
     eje.text(12.4, 100 / 12 + 0.25, "8,3 %\n(uniforme)", fontsize=7,
              va="bottom", color="0.45")
     eje.set_xticks(range(1, 13))
-    eje.set_xlabel("Mes calendario")
+    eje.set_xticklabels([nombres[(mes_inicio - 1 + k) % 12] for k in range(12)])
+    eje.set_xlabel(
+        f"Mes de la gestión comercial ({nombres[mes_inicio - 1]} a "
+        f"{nombres[(mes_inicio - 2) % 12]})"
+    )
     eje.set_ylabel("Participación en el valor anual de la categoría (%)")
     # Sin título incrustado: el epígrafe se escribe en el documento y acá se
     # duplicaría (regla de TODO el catálogo).

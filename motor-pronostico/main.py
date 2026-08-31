@@ -117,6 +117,7 @@ def dibujar_catalogo(cfg, insumos: dict, directorio: Path) -> list[Path]:
         rutas.append(figuras.figura_perfil_categorias(
             perfil, insumos["estacionales"],
             directorio / "figura01_perfil_categorias.png", dpi=dpi,
+            mes_inicio=cfg.periodo.mes_inicio_gestion,
         ))
 
     if insumos.get("por_gestion") is not None:
@@ -201,6 +202,23 @@ def dibujar_catalogo(cfg, insumos: dict, directorio: Path) -> list[Path]:
     return rutas
 
 
+def gestiones_del_evento(cfg) -> tuple[int, ...]:
+    """Gestiones que la Figura 2 marca como del evento exógeno.
+
+    Una gestión entra solo si la MAYORÍA de sus meses cae dentro de la
+    ventana. Marcar "toda gestión tocada" pintaba entera la gestión 2020
+    (abril 2019 a marzo 2020) por su último mes, y el lector veía dos
+    gestiones de confinamiento donde hubo una. Depende solo de la
+    configuración, así que el camino rápido de figuras la recalcula en vez
+    de confiar en el valor persistido por la corrida.
+    """
+    meses_por_gestion: dict[int, int] = {}
+    for m in (cfg.evento.ventana() if cfg.evento else []):
+        g = gestion_de(m, cfg.periodo.mes_inicio_gestion)
+        meses_por_gestion[g] = meses_por_gestion.get(g, 0) + 1
+    return tuple(sorted(g for g, n in meses_por_gestion.items() if n >= 6))
+
+
 def comando_figuras(cfg) -> int:
     """Redibuja el catálogo desde los insumos persistidos, sin re-correr nada.
 
@@ -221,6 +239,7 @@ def comando_figuras(cfg) -> int:
         )
     with ruta_insumos.open("rb") as archivo:
         insumos = pickle.load(archivo)
+    insumos["gestiones_evento"] = gestiones_del_evento(cfg)
 
     if insumos.get("config_sha256") != cfg.hash_configuracion():
         print("AVISO: config.yaml cambió desde la corrida que persistió los "
@@ -1303,10 +1322,7 @@ def comando_ejecutar(cfg) -> int:
             .dropna().groupby("gestion")["valor"].sum().div(1e6)
             .rename("valor_mm").reset_index()
         )
-        insumos["gestiones_evento"] = tuple(sorted({
-            gestion_de(m, cfg.periodo.mes_inicio_gestion)
-            for m in (cfg.evento.ventana() if cfg.evento else [])
-        }))
+        insumos["gestiones_evento"] = gestiones_del_evento(cfg)
 
     # F13 — casos ilustrativos, elegidos por REGLA declarada (no a dedo):
     # la serie de mayor demanda valorizada de entrenamiento de cada régimen.
