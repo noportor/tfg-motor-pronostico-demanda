@@ -1,4 +1,4 @@
-"""Figura de la extensión exploratoria — sensibilidad al régimen (Tabla 12 en imagen).
+"""Figura de la extensión exploratoria — sensibilidad al régimen (Tabla 10 en imagen).
 
 Dibuja, para los sistemas y pronosticadores clave de la extensión, la D
 valorizada a un paso en las dos gestiones de prueba medidas: la gestión 2026
@@ -8,7 +8,7 @@ segmento: la longitud del segmento ES la sensibilidad al régimen, y el orden
 de las filas (por peor caso, ascendente) deja arriba al sistema conmutado.
 
 El insumo son las ``tabla_valorizada.csv`` de ambas corridas: la figura no
-recalcula nada, solo dibuja lo que la Tabla 12 y el texto del apartado 4.4
+recalcula nada, solo dibuja lo que la Tabla 10 y el texto del apartado 4.3.3
 ya reportan. Uso:
 
     docker compose run --rm tfg python scripts/figura_extension_regimen.py

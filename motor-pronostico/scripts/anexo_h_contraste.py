@@ -3,7 +3,7 @@
 Reproduce, desde el artefacto ``errores_por_serie.csv`` de la corrida, los
 valores reportados en el apartado «Contraste estadístico de la hipótesis»:
 Shapiro–Wilk sobre las diferencias, Wilcoxon de rangos con signo (pareado,
-unilateral) del motor frente a los dos métodos de referencia, y Friedman con
+unilateral) del motor frente a los tres métodos de referencia, y Friedman con
 post hoc de Nemenyi sobre los once modelos evaluados.
 
 La métrica contrastada es el error compuesto por serie (MAE + |Bias| en
@@ -24,7 +24,7 @@ from scipy import stats
 
 RUTA = sys.argv[1] if len(sys.argv) > 1 else "salidas/matriz_contraste.csv"
 PROPUESTO = "motor"
-REFERENCIAS = ["ma_12", "naive_m1"]       # método vigente y línea base ingenua
+REFERENCIAS = ["ma_12", "ma_12_gf", "naive_m1"]   # promedio móvil simple, fórmula vigente (con factor) y línea base ingenua
 ALFA = 0.05
 
 # --- Matriz serie x modelo (error compuesto MAE + |Bias|, en unidades) ------
