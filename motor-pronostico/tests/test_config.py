@@ -118,3 +118,36 @@ def test_rechaza_un_benchmark_que_no_esta_entre_los_modelos(cfg):
 def test_rechaza_un_tratamiento_de_devoluciones_desconocido(cfg):
     with pytest.raises(ErrorDeConfiguracion):
         cargar_config(cfg.ruta_config, anulaciones=["series.devoluciones=promediar"])
+
+
+# ---------------------------------------------------------------------------
+# Ablación multihorizonte: re-estimación de los estadísticos por origen
+# ---------------------------------------------------------------------------
+
+def test_reestimar_estadisticos_apagado_por_defecto_y_anulable(cfg, tmp_path):
+    """La ablación está apagada por defecto (RN-2: parámetros congelados) y
+    se enciende solo por anulación explícita, que queda en el manifiesto."""
+    import yaml
+
+    assert cfg.multihorizonte is not None
+    assert cfg.multihorizonte.reestimar_estadisticos is False
+
+    encendida = cargar_config(
+        cfg.ruta_config,
+        anulaciones=["multihorizonte.reestimar_estadisticos=true"],
+    )
+    assert encendida.multihorizonte.reestimar_estadisticos is True
+    assert encendida.crudo["_anulaciones"] == [
+        "multihorizonte.reestimar_estadisticos=true"
+    ]
+    # Dos corridas con distinta ablación no pueden confundirse entre sí.
+    assert encendida.hash_configuracion() != cfg.hash_configuracion()
+
+    # Sin la clave en el archivo, el default también es False: una
+    # configuración anterior a la ablación sigue corriendo el protocolo
+    # congelado sin cambios.
+    crudo = yaml.safe_load(yaml.safe_dump(cfg.crudo))
+    crudo["multihorizonte"].pop("reestimar_estadisticos")
+    ruta = tmp_path / "sin_clave.yaml"
+    ruta.write_text(yaml.safe_dump(crudo, allow_unicode=True), encoding="utf-8")
+    assert cargar_config(ruta).multihorizonte.reestimar_estadisticos is False

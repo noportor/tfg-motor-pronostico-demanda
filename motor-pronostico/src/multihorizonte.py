@@ -39,6 +39,17 @@ El protocolo
   re-optimizar, y mirar prueba sería fuga).
 - **La selección del motor no se re-decide.** La elección por serie se tomó
   mirando solo validación (RN-2) y se mantiene fija en todos los orígenes.
+- **Ablación: re-estimación de los estadísticos por origen.** Con
+  ``multihorizonte.reestimar_estadisticos: true`` (APAGADO por defecto) los
+  brazos estadísticos re-estiman sus parámetros (alfa del suavizado, alfa/
+  beta/gamma de Holt-Winters, alfa de Croston) en cada origen con la historia
+  disponible hasta ese origen: exactamente la misma historia con la que
+  LightGBM se re-entrena. Sirve para medir si la asimetría del protocolo
+  (LightGBM re-aprende por origen, los estadísticos no) influye en el
+  hallazgo del horizonte. No altera la RN-2 por defecto: con el flag apagado
+  la salida es idéntica a la del protocolo anterior, y aun con el flag
+  encendido la selección del motor sigue congelada y ningún parámetro mira
+  más allá del origen. El conteo de re-ajustes se reporta.
 - **Proyección recursiva** — la mecánica del práctica vigente: el
   pronóstico de cada mes se realimenta como un dato para pronosticar el
   siguiente. Con esa recursión el suavizado exponencial reproduce exactamente
@@ -54,6 +65,7 @@ El protocolo
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -451,6 +463,9 @@ class InformeMultihorizonte:
     observaciones_con_costo: int = 0
     reentrenos_lightgbm: int = 0
     reentrenos_directo: int = 0
+    # Ablación reestimar_estadisticos: re-ajustes de brazos estadísticos con
+    # parámetros (uno por origen y brazo: suavizado, Holt-Winters, Croston). 0 = protocolo con parámetros congelados (RN-2).
+    reestimaciones_estadisticas: int = 0
     respaldos: dict[str, int] = field(default_factory=dict)
     sin_pronostico: int = 0
     d_global: dict[str, float] = field(default_factory=dict)
@@ -473,6 +488,11 @@ class InformeMultihorizonte:
             salida.append(
                 f"Re-entrenamientos del directo    : {self.reentrenos_directo} "
                 "boosters (por origen, árboles congelados)"
+            )
+        if self.reestimaciones_estadisticas:
+            salida.append(
+                f"Re-estimaciones de estadísticos  : {self.reestimaciones_estadisticas} "
+                "(ablación: parámetros por origen con la historia hasta el origen)"
             )
         con_respaldo = {m: n for m, n in self.respaldos.items() if n}
         if con_respaldo:
@@ -501,6 +521,37 @@ def _origenes_de(cfg: Config) -> list[pd.Period]:
     return list(
         pd.period_range(cfg.particion.fin_validacion, cfg.periodo.fin - 1, freq="M")
     )
+
+
+def _tiene_parametros(modelo) -> bool:
+    """True si el brazo estima parámetros (alfa del suavizado, alfa/beta/gamma
+    de Holt-Winters, alfa de Croston). Naïve y promedios móviles no tienen."""
+    return (
+        getattr(modelo, "alfa_por_serie", None) is not None
+        or getattr(modelo, "parametros_por_serie", None) is not None
+    )
+
+
+def _reestimar_en_origen(modelo, historia: pd.DataFrame):
+    """Copia del brazo con sus parámetros re-estimados con la historia hasta
+    el origen (ablación ``multihorizonte.reestimar_estadisticos``).
+
+    ``copy.deepcopy`` de un modelo ya ajustado es barato (su estado son unas
+    pocas Series con un parámetro por serie) y ``ajustar()`` lo sobrescribe
+    por completo, así que la copia no hereda nada del ajuste base y el modelo
+    original queda intacto. La validación que se le pasa está VACÍA: los
+    estadísticos no la usan (solo LightGBM, para la parada temprana) y así
+    queda explícito que ningún parámetro mira más allá del origen.
+
+    Naïve y promedios móviles no tienen parámetros y su ``ajustar()`` no hace
+    nada: se re-ajustan igual, por uniformidad (RN-4: la mecánica se aplica
+    por igual a todos los brazos) y para no mantener acá una lista de quién
+    tiene parámetros y quién no. El conteo del informe cuenta solo los brazos
+    con parámetros estimados (suavizado, Holt-Winters, Croston).
+    """
+    copia = copy.deepcopy(modelo)
+    copia.ajustar(historia, historia.iloc[0:0])
+    return copia
 
 
 def evaluar(
@@ -566,13 +617,25 @@ def evaluar(
                 cruda = proyector_lgbm.proyectar(
                     origen, horizonte, reentrenar=mh.reentrenar_lightgbm
                 )
-            elif nombre == "croston":
-                cruda = proyectar_constante(modelo, historia, horizonte)
             elif hasattr(modelo, "proyectar_directo"):
                 # Brazos ML2: proyección directa nativa (ver criterio arriba).
                 cruda = modelo.proyectar_directo(historia, horizonte)
             else:
-                cruda = proyectar_recursivo(modelo, historia, horizonte)
+                # Brazos estadísticos. Con la ablación activa, cada origen
+                # proyecta con una copia re-estimada sobre la MISMA historia
+                # que ve el re-entreno de LightGBM (``historia``, hasta el
+                # origen); el modelo original queda intacto. Con el flag
+                # apagado se usa el modelo congelado del paso 7, tal cual.
+                if mh.reestimar_estadisticos and nombre not in (mezclas or {}):
+                    modelo = _reestimar_en_origen(modelo, historia)
+                    if _tiene_parametros(modelo):
+                        informe.reestimaciones_estadisticas += 1
+                if nombre == "croston":
+                    # Croston sigue siendo constante en el horizonte: sus
+                    # estados solo se actualizan con demanda observada.
+                    cruda = proyectar_constante(modelo, historia, horizonte)
+                else:
+                    cruda = proyectar_recursivo(modelo, historia, horizonte)
 
             cruda = cruda.reindex(index=meses, columns=panel_ajuste.columns)
             respaldos[nombre] += int(

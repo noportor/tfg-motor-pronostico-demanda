@@ -329,6 +329,9 @@ multihorizonte:
   horizonte_maximo: 12
   origenes: "rodantes"
   reentrenar_lightgbm: true
+  # Ablación (apagada): los brazos estadísticos re-estiman sus parámetros en
+  # cada origen con la historia hasta el origen, igual que LightGBM re-entrena.
+  reestimar_estadisticos: false
 
 # -----------------------------------------------------------------------------
 # 7c. Ajuste de hiperparámetros del brazo de aprendizaje automático

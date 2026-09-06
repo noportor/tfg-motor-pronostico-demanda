@@ -8,19 +8,22 @@ pronóstico usa información posterior a su origen.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from conftest import panel_de, serie_estacional
 from src.config import ErrorDeConfiguracion, cargar_config
+from src.modelos.base import truncar_en_cero
 from src.modelos.croston import Croston
 from src.modelos.naive import Naive
 from src.modelos.promedio_movil import PromedioMovil
 from src.modelos.suavizado import HoltWinters, SuavizadoExponencial
 from src.multihorizonte import (
-    agregado_valorizado, criterio_por_serie, proyectar_constante,
-    proyectar_recursivo,
+    _reestimar_en_origen, _tiene_parametros, agregado_valorizado, criterio_por_serie, evaluar,
+    proyectar_constante, proyectar_recursivo,
 )
 
 
@@ -356,3 +359,250 @@ def test_grupo_sin_demanda_queda_visible_no_descartado():
         "nunca un número inventado ni una fila descartada"
     )
     assert 2 in resumen.index
+
+
+# ---------------------------------------------------------------------------
+# Ablación: re-estimación de los estadísticos por origen
+# ---------------------------------------------------------------------------
+# Panel sintético de 48 meses (2017-04 .. 2021-03): 36 de entrenamiento, 6 de
+# validación y 6 de prueba. La serie A está DISEÑADA para que el alfa óptimo
+# del suavizado exponencial cambie cuando se agrega historia posterior al
+# entrenamiento: 36 meses alternando 100/101 (gana el alfa bajo, que promedia
+# la alternancia) seguidos de una rampa de +30 por mes (gana el alfa alto, que
+# la sigue). Con la rejilla {0,1; 0,9} la decisión es nítida a mano.
+
+class _SESVigilado(SuavizadoExponencial):
+    """SES que registra el ÚLTIMO mes de cada historia con la que se le pidió
+    ajustar(). El registro vive en la clase: las copias que hace la ablación
+    (``copy.deepcopy``) escriben en la misma lista."""
+
+    ajustes: list[pd.Period] = []
+
+    def ajustar(self, entrenamiento: pd.DataFrame, validacion: pd.DataFrame) -> None:
+        _SESVigilado.ajustes.append(entrenamiento.index[-1])
+        super().ajustar(entrenamiento, validacion)
+
+
+def _panel_alfa_cambiante() -> pd.DataFrame:
+    a = [100.0 + (t % 2) for t in range(36)] + [100.0 + 30.0 * k for k in range(1, 13)]
+    return _ancho({"A": a, "B": serie_estacional(48)})
+
+
+def _cfg_sintetico(cfg, reestimar: bool, origenes: str = "rodantes",
+                   horizonte: int = 3):
+    """La configuración real con cortes cortos para el panel sintético."""
+    return replace(
+        cfg,
+        periodo=replace(cfg.periodo, inicio=pd.Period("2017-04", "M"),
+                        fin=pd.Period("2021-03", "M")),
+        particion=replace(cfg.particion,
+                          fin_entrenamiento=pd.Period("2020-03", "M"),
+                          fin_validacion=pd.Period("2020-09", "M")),
+        multihorizonte=replace(cfg.multihorizonte, activo=True,
+                               horizonte_maximo=horizonte, origenes=origenes,
+                               reestimar_estadisticos=reestimar),
+    )
+
+
+def _brazos_ajustados(entrenamiento: pd.DataFrame) -> dict[str, object]:
+    modelos = {
+        "naive_m1": Naive(),
+        "ma_2": PromedioMovil(2),
+        "exp_smooth_opt": _SESVigilado(alfas=[0.1, 0.9]),
+        "holt_winters": HoltWinters(periodo_estacional=12, alfas=[0.3],
+                                    betas=[0.1], gammas=[0.2]),
+        "croston": Croston(alfas=[0.1, 0.3]),
+    }
+    for modelo in modelos.values():
+        modelo.ajustar(entrenamiento, entrenamiento)
+    return modelos
+
+
+def _evaluar(cfg_mh, modelos, panel_ajuste, panel_real):
+    entrenamiento = panel_real.loc[
+        panel_real.index <= cfg_mh.particion.fin_entrenamiento
+    ]
+    elegido = pd.Series({panel_real.columns[0]: "exp_smooth_opt",
+                         panel_real.columns[1]: "naive_m1"})
+    costo = pd.Series(1.0, index=panel_real.columns)
+    return evaluar(
+        cfg_mh, modelos, elegido, panel_ajuste, panel_real, entrenamiento,
+        pd.DataFrame(), costo,
+    )
+
+
+def _resumen_origen_congelado(cfg_mh, modelos, panel, entrenamiento):
+    """El protocolo con parámetros congelados, armado a mano con las
+    primitivas públicas: es la referencia de «lo mismo que antes»."""
+    media = entrenamiento.mean(axis=0, skipna=True)
+    origenes = pd.period_range(
+        cfg_mh.particion.fin_validacion, cfg_mh.periodo.fin - 1, freq="M"
+    )
+    filas = []
+    for origen in origenes:
+        horizonte = min(cfg_mh.multihorizonte.horizonte_maximo,
+                        (cfg_mh.periodo.fin - origen).n)
+        historia = panel.loc[panel.index <= origen]
+        meses = pd.period_range(origen + 1, origen + horizonte, freq="M")
+        real = panel.reindex(index=meses)
+        ultimo = historia.ffill().iloc[-1]
+        for nombre, modelo in modelos.items():
+            proyectar = proyectar_constante if nombre == "croston" else proyectar_recursivo
+            cruda = proyectar(modelo, historia, horizonte).reindex(
+                index=meses, columns=panel.columns
+            )
+            pred = truncar_en_cero(cruda.fillna(ultimo).fillna(media))
+            for mes in meses:
+                for serie in panel.columns:
+                    if np.isnan(real.loc[mes, serie]) or np.isnan(pred.loc[mes, serie]):
+                        continue
+                    filas.append({
+                        "modelo": nombre, "origen": str(origen),
+                        "horizonte": (mes - origen).n, "serie": serie,
+                        "y_real": real.loc[mes, serie],
+                        "y_pred": pred.loc[mes, serie], "costo": 1.0,
+                    })
+    return agregado_valorizado(pd.DataFrame(filas), ["modelo", "origen"])
+
+
+def _ordenado(resumen: pd.DataFrame, modelos) -> pd.DataFrame:
+    return (
+        resumen.loc[resumen["modelo"].isin(modelos)]
+        .sort_values(["modelo", "origen"])
+        .reset_index(drop=True)
+        [["modelo", "origen", "n_observaciones", "wmape_val", "bias_val", "D"]]
+    )
+
+
+def test_reestimar_en_origen_reestima_con_la_historia_y_no_toca_el_original():
+    """La copia re-estimada elige el alfa de la historia completa hasta el
+    origen; el modelo ajustado en entrenamiento queda intacto."""
+    panel = _panel_alfa_cambiante()
+    entrenamiento = panel.iloc[:36]
+    serie_a = panel.columns[0]
+
+    ses = SuavizadoExponencial(alfas=[0.1, 0.9])
+    ses.ajustar(entrenamiento, entrenamiento)
+    assert ses.alfa_por_serie[serie_a] == pytest.approx(0.1), (
+        "Con la alternancia 100/101 del entrenamiento gana el alfa bajo"
+    )
+
+    historia = panel.iloc[:47]                    # un origen tardío, con rampa
+    copia = _reestimar_en_origen(ses, historia)
+    assert copia is not ses
+    assert copia.alfa_por_serie[serie_a] == pytest.approx(0.9), (
+        "Con la rampa incorporada a la historia gana el alfa alto"
+    )
+    assert ses.alfa_por_serie[serie_a] == pytest.approx(0.1), (
+        "El modelo original (parámetros congelados) no se toca"
+    )
+
+
+def test_flag_apagado_es_el_protocolo_congelado(cfg):
+    """Con la ablación apagada nadie re-ajusta nada y la curva por origen es
+    exactamente la del protocolo de parámetros congelados."""
+    panel = _panel_alfa_cambiante()
+    cfg_mh = _cfg_sintetico(cfg, reestimar=False)
+    entrenamiento = panel.loc[panel.index <= cfg_mh.particion.fin_entrenamiento]
+
+    _SESVigilado.ajustes.clear()
+    modelos = _brazos_ajustados(entrenamiento)
+    alfa_base = modelos["exp_smooth_opt"].alfa_por_serie.copy()
+
+    resultado = _evaluar(cfg_mh, modelos, panel, panel)
+
+    assert resultado.informe.reestimaciones_estadisticas == 0
+    assert _SESVigilado.ajustes == [entrenamiento.index[-1]], (
+        "Con el flag apagado el único ajuste es el del paso 7 (entrenamiento)"
+    )
+    assert not any("Re-estimaciones" in linea for linea in resultado.informe.lineas())
+    pd.testing.assert_series_equal(modelos["exp_smooth_opt"].alfa_por_serie, alfa_base)
+
+    esperado = _resumen_origen_congelado(cfg_mh, modelos, panel, entrenamiento)
+    pd.testing.assert_frame_equal(
+        _ordenado(resultado.resumen_origen, modelos),
+        _ordenado(esperado, modelos),
+        check_dtype=False,
+    )
+
+
+def test_reestimar_rodante_reajusta_una_vez_por_origen_con_la_historia_hasta_el_origen(cfg):
+    panel = _panel_alfa_cambiante()
+    cfg_mh = _cfg_sintetico(cfg, reestimar=True)
+    entrenamiento = panel.loc[panel.index <= cfg_mh.particion.fin_entrenamiento]
+    origenes = list(pd.period_range(
+        cfg_mh.particion.fin_validacion, cfg_mh.periodo.fin - 1, freq="M"
+    ))
+
+    _SESVigilado.ajustes.clear()
+    modelos = _brazos_ajustados(entrenamiento)
+    resultado = _evaluar(cfg_mh, modelos, panel, panel)
+
+    # Un re-ajuste por origen y brazo CON parámetros (los sin parámetros se
+    # re-ajustan igual, pero no se cuentan: su ajustar() no hace nada).
+    con_parametros = [m for m in modelos.values() if _tiene_parametros(m)]
+    assert resultado.informe.reestimaciones_estadisticas == len(origenes) * len(con_parametros)
+    assert _SESVigilado.ajustes == [entrenamiento.index[-1], *origenes], (
+        "Cada re-ajuste del SES usa la historia que termina EXACTAMENTE en su "
+        "origen: ni antes (sería tirar información) ni después (sería fuga)"
+    )
+    assert any("Re-estimaciones" in linea for linea in resultado.informe.lineas())
+
+
+def test_reestimar_cambia_al_ses_en_origen_tardio_y_no_mira_el_futuro(cfg):
+    """(1) Con el flag encendido la proyección del SES en un origen posterior
+    al entrenamiento DIFIERE de la congelada (el alfa cambió); los brazos sin
+    parámetros no cambian. (2) Ningún re-ajuste usa datos posteriores al
+    origen: perturbar el panel de AJUSTE después del origen no altera nada."""
+    panel = _panel_alfa_cambiante()
+    serie_a = panel.columns[0]
+    congelado = _cfg_sintetico(cfg, reestimar=False, origenes="fijo")
+    ablacion = _cfg_sintetico(cfg, reestimar=True, origenes="fijo")
+    entrenamiento = panel.loc[panel.index <= congelado.particion.fin_entrenamiento]
+    origen = congelado.particion.fin_validacion
+
+    _SESVigilado.ajustes.clear()
+    modelos = _brazos_ajustados(entrenamiento)
+    alfa_base = modelos["exp_smooth_opt"].alfa_por_serie.copy()
+    assert alfa_base[serie_a] == pytest.approx(0.1)
+
+    r_congelado = _evaluar(congelado, modelos, panel, panel)
+    r_ablacion = _evaluar(ablacion, modelos, panel, panel)
+
+    assert r_ablacion.informe.reestimaciones_estadisticas == sum(
+        1 for m in modelos.values() if _tiene_parametros(m)
+    )
+    assert _SESVigilado.ajustes == [entrenamiento.index[-1], origen]
+    pd.testing.assert_series_equal(
+        modelos["exp_smooth_opt"].alfa_por_serie, alfa_base
+    ), "El modelo del paso 7 sigue congelado aun con la ablación encendida"
+
+    def d(resultado, modelo):
+        return float(resultado.resumen_origen.set_index("modelo").loc[modelo, "D"])
+
+    assert d(r_ablacion, "exp_smooth_opt") != pytest.approx(d(r_congelado, "exp_smooth_opt")), (
+        "El SES re-estimado en el origen (alfa 0,9) proyecta distinto que el "
+        "congelado (alfa 0,1): la ablación mide algo"
+    )
+    assert d(r_ablacion, "naive_m1") == pytest.approx(d(r_congelado, "naive_m1")), (
+        "Sin parámetros que re-estimar, el Naïve no cambia"
+    )
+
+    # Sin fuga. El panel de ajuste perturbado DESPUÉS del origen alterna
+    # 0/1000: si la re-estimación mirara esos meses, el alfa volvería a 0,1.
+    perturbado = panel.copy()
+    despues = perturbado.index > origen
+    perturbado.loc[despues, serie_a] = [0.0, 1000.0] * (int(despues.sum()) // 2)
+
+    con_fuga = SuavizadoExponencial(alfas=[0.1, 0.9])
+    con_fuga.ajustar(perturbado, perturbado)
+    honesto = SuavizadoExponencial(alfas=[0.1, 0.9])
+    honesto.ajustar(panel.loc[panel.index <= origen], panel.iloc[0:0])
+    assert con_fuga.alfa_por_serie[serie_a] != honesto.alfa_por_serie[serie_a], (
+        "Precondición: la perturbación cambiaría el alfa si se mirara el futuro"
+    )
+
+    # panel_real intacto: la realidad contra la que se compara es la misma.
+    r_perturbado = _evaluar(ablacion, modelos, perturbado, panel)
+    pd.testing.assert_frame_equal(r_perturbado.resumen_origen, r_ablacion.resumen_origen)
+    pd.testing.assert_frame_equal(r_perturbado.resumen_horizonte, r_ablacion.resumen_horizonte)
