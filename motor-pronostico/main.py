@@ -1211,6 +1211,9 @@ def comando_ejecutar(cfg) -> int:
             "horizonte_maximo": resultado_mh.informe.horizonte_maximo,
             "reentrenos_lightgbm": resultado_mh.informe.reentrenos_lightgbm,
             "reentrenos_directo": resultado_mh.informe.reentrenos_directo,
+            "reestimaciones_estadisticas": getattr(
+                resultado_mh.informe, "reestimaciones_estadisticas", 0
+            ),
             "respaldos": resultado_mh.informe.respaldos,
             "observaciones": resultado_mh.informe.observaciones,
             "observaciones_con_costo": resultado_mh.informe.observaciones_con_costo,
@@ -1227,6 +1230,7 @@ def comando_ejecutar(cfg) -> int:
                 "horizonte_maximo": cfg.multihorizonte.horizonte_maximo,
                 "reentrenar_lightgbm": cfg.multihorizonte.reentrenar_lightgbm,
                 "reentrenar_directo": cfg.multihorizonte.reentrenar_directo,
+                "reestimar_estadisticos": cfg.multihorizonte.reestimar_estadisticos,
                 "seleccion_motor": "congelada de validación (RN-2)",
                 "proyeccion": "recursiva, la mecánica del práctica vigente; "
                               "Croston constante (sus estados solo se actualizan "
@@ -1235,6 +1239,9 @@ def comando_ejecutar(cfg) -> int:
             conteos={
                 "respaldos_por_modelo": resultado_mh.informe.respaldos,
                 "reentrenos_lightgbm": resultado_mh.informe.reentrenos_lightgbm,
+                "reestimaciones_estadisticas": getattr(
+                    resultado_mh.informe, "reestimaciones_estadisticas", 0
+                ),
                 "sin_pronostico": resultado_mh.informe.sin_pronostico,
                 "D_global_pct": {
                     m: round(d, 1)
@@ -1247,6 +1254,11 @@ def comando_ejecutar(cfg) -> int:
                    if not resultado_mh.resumen_estratos.empty else [])
             ),
             notas=[
+                *(["ABLACIÓN: los brazos estadísticos re-estimaron sus parámetros "
+                   "en cada origen con la historia hasta el origen (la misma que "
+                   "ve el re-entreno de LightGBM); la selección del motor sigue "
+                   "congelada de validación."]
+                  if cfg.multihorizonte.reestimar_estadisticos else []),
                 "Protocolo SEPARADO del principal (RN-4): la Tabla 8 y el "
                 "contraste siguen siendo a un paso; esta etapa mide quién "
                 "sostiene el horizonte de planificación. El objetivo operativo "

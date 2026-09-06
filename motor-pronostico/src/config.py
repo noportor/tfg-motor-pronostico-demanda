@@ -123,6 +123,12 @@ class ConfigMultihorizonte:
     # excepción declarada que el recursivo: el práctica vigente
     # re-entrena en cada corrida mensual; árboles congelados del ajuste base).
     reentrenar_directo: bool = False
+    # Ablación (apagada por defecto): los brazos ESTADÍSTICOS re-estiman sus
+    # parámetros en cada origen con la historia disponible hasta ese origen,
+    # la misma con la que LightGBM se re-entrena. Mide si la asimetría del
+    # protocolo (LightGBM re-aprende por origen, los estadísticos no) influye
+    # en el hallazgo del horizonte. Con False rige la RN-2 tal cual.
+    reestimar_estadisticos: bool = False
 
 
 @dataclass(frozen=True)
@@ -431,6 +437,7 @@ def cargar_config(
             origenes=str(_exigir(m, "origenes", "multihorizonte")).lower(),
             reentrenar_lightgbm=bool(m.get("reentrenar_lightgbm", True)),
             reentrenar_directo=bool(m.get("reentrenar_directo", False)),
+            reestimar_estadisticos=bool(m.get("reestimar_estadisticos", False)),
         )
         if multihorizonte.horizonte_maximo < 1:
             raise ErrorDeConfiguracion(
