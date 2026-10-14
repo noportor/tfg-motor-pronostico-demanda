@@ -36,8 +36,9 @@ confidencialidad con la empresa (**Anexo B** del documento). En consecuencia:
 Hay un control automático (`motor-pronostico/tests/test_confidencialidad.py`)
 que inspecciona **todo lo que git rastrea en este repositorio** y hace fallar la
 suite si aparece un identificador de la empresa, una credencial o una etiqueta
-real de regional. No inspecciona el interior de los documentos ofimáticos de
-`documento/`: eso hay que revisarlo a ojo antes de publicar.
+real de regional. No puede inspeccionar el interior de los documentos
+ofimáticos, y por eso también falla si se versiona un `.docx`, `.xlsx`, `.pdf`,
+`.pptx` o `.zip`.
 
 ---
 
