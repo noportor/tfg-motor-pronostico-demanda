@@ -5,13 +5,17 @@ de series a la vez, en lugar de ajustar un modelo por serie. Ahí está su venta
 potencial —una serie con poca historia se beneficia del patrón estacional que el
 modelo aprendió en el resto del portafolio— y también su principal limitación a
 declarar: sus números no son comparables entre subconjuntos distintos de series,
-porque entrenar con 3.000 series no es lo mismo que entrenar con 6.000.
+porque entrenar con la muestra no es lo mismo que entrenar con la población
+completa.
 
 Decisiones que se justifican en la memoria
 ------------------------------------------
-- **Objetivo ``regression_l1``.** Optimiza el error absoluto, que es la métrica
-  principal del estudio. Con el objetivo cuadrático por defecto el modelo
-  perseguiría los picos y el MAE reportado sería peor que el que puede lograr.
+- **Objetivo ``tweedie``**, con la potencia de varianza calibrada en la búsqueda
+  de hiperparámetros (``config.yaml``, sección ``lightgbm``). Es la pérdida
+  adecuada a una demanda no negativa con muchos ceros; la pérdida absoluta y la
+  cuadrática compitieron en la misma búsqueda y perdieron en la métrica de
+  decisión interna (ver ``resultados/ensayos/``). Con el objetivo cuadrático por
+  defecto el modelo perseguiría los picos.
 - **Parada temprana contra validación.** Es el único uso legítimo del bloque de
   validación por parte de un modelo, y por eso la interfaz común lo recibe. La
   parada temprana fija el número de árboles; no toca el bloque de prueba.

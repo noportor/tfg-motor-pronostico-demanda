@@ -115,9 +115,10 @@ def error_absoluto_por_serie(
     con parámetro.
 
     Se optimiza el error ABSOLUTO y no el cuadrático porque la métrica principal
-    del estudio es el MAE y el objetivo de LightGBM es ``regression_l1``. Elegir
-    los parámetros minimizando el error cuadrático y después reportar el MAE
-    sería optimizar una cosa y medir otra.
+    del estudio es el MAE: elegir los parámetros minimizando el error cuadrático
+    y después reportar el MAE sería optimizar una cosa y medir otra. (LightGBM,
+    el brazo global, usa en cambio el objetivo Tweedie calibrado en su búsqueda
+    de hiperparámetros; la asimetría se declara en la memoria.)
 
     Devuelve ``inf`` en las series sin ninguna observación comparable, para que
     nunca resulten elegidas por ser el mínimo de un conjunto vacío.

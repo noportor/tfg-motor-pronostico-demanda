@@ -21,8 +21,9 @@ series temporales. Tres razones, todas metodológicas:
 
 Los parámetros se eligen minimizando el **error absoluto** en el bloque de
 entrenamiento, no el error cuadrático. Es coherente con que la métrica principal
-del estudio sea el MAE y con el objetivo ``regression_l1`` de LightGBM: elegir
-por SSE y reportar MAE optimizaría una cosa y mediría otra.
+del estudio sea el MAE: elegir por SSE y reportar MAE optimizaría una cosa y
+mediría otra. (El brazo global, LightGBM, usa el objetivo Tweedie calibrado en
+su búsqueda de hiperparámetros; la asimetría se declara en la memoria.)
 """
 
 from __future__ import annotations
