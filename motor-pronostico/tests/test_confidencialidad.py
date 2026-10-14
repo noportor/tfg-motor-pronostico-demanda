@@ -11,7 +11,13 @@ archivo versionado.
 
 Cómo agregar un patrón
 ----------------------
-Si aparece un identificador interno nuevo, se agrega a ``PATRONES_PROHIBIDOS``.
+Los patrones GENÉRICOS (direcciones, credenciales, claves) viven en
+``PATRONES_PROHIBIDOS``. Los identificadores CONCRETOS de la empresa (su nombre
+real, el de su sistema de origen, bases, esquemas, usuarios, dominio) no pueden
+escribirse en este archivo, porque el repositorio se publica y la lista los
+revelaría: viven en ``config/confidencialidad.local.txt``, fuera del control de
+versiones, una expresión regular por línea (``nombre legible<TAB>expresión``).
+La prueba los carga cuando el archivo existe y avisa cuando no.
 Si un hallazgo es un falso positivo, se agrega a ``EXCEPCIONES`` con el motivo
 escrito: una excepción sin justificación es una excepción que nadie recuerda por
 qué está.
@@ -48,18 +54,12 @@ SUBCARPETA = (
     f"{PROYECTO.relative_to(RAIZ).as_posix()}/" if PROYECTO != RAIZ else ""
 )
 
-# Cada entrada es (nombre legible, expresión regular).
+# Cada entrada es (nombre legible, expresión regular). Sólo patrones genéricos:
+# los identificadores concretos de la empresa están en la lista local.
 PATRONES_PROHIBIDOS: list[tuple[str, str]] = [
-    ("nombre real de la empresa", r"(?i)\bempresa\b"),
-    ("nombre del grupo empresarial", r"(?i)\bla\s+grupo\b|\bgrupo\b"),
-    ("nombre del sistema de pronóstico interno", r"(?i)\bsistema_origen\b"),
-    ("nombre de la base de datos corporativa", r"(?i)\bbd_origen\b|\bbd_origen_v2\b|\bbd_erp\b"),
-    ("esquema interno", r"(?i)\besquema_origen\b|\besquema_nucleo\b|\besquema_analitica\b"),
     # 0.0.0.0 (escucha universal) y 127.* (loopback) no revelan nada: son las
     # direcciones de cualquier Dockerfile del mundo. El patrón caza las demás.
     ("dirección IP", r"\b(?!0\.0\.0\.0\b)(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b"),
-    ("dominio corporativo", r"(?i)[\w.-]+@[\w.-]*empresa[\w.-]*"),
-    ("usuario de base de datos", r"(?i)\busuario_bd\b|\busuario_ro\b|\busuario_bi\b"),
     ("regional real", r"(?i)\bSANTA\s+CRUZ\b|\bCOCHABAMBA\b|\bLA\s+PAZ\b|\bTARIJA\b"),
     ("credencial embebida", r"(?i)(password|contrase[nñ]a|secret|token)\s*[:=]\s*[\"'][^\"'{$]{6,}"),
     # Un token suelto en un archivo no tiene la forma `token: "..."`, así que el
@@ -71,6 +71,27 @@ PATRONES_PROHIBIDOS: list[tuple[str, str]] = [
     ("clave privada", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     ("cadena de conexión con contraseña", r"(?i)\b\w+://[^\s:@/]+:[^\s:@/]+@"),
 ]
+
+# Identificadores concretos de la empresa: lista local, fuera del repositorio.
+LISTA_LOCAL = PROYECTO / "config" / "confidencialidad.local.txt"
+
+
+def _patrones_locales() -> list[tuple[str, str]]:
+    """(nombre legible, expresión) por línea de la lista local; vacía si no existe."""
+    if not LISTA_LOCAL.exists():
+        return []
+    patrones = []
+    for linea in LISTA_LOCAL.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith("#"):
+            continue
+        nombre, _, patron = linea.partition("\t")
+        if nombre.strip() and patron.strip():
+            patrones.append((nombre.strip(), patron.strip()))
+    return patrones
+
+
+PATRONES_LOCALES = _patrones_locales()
 
 # Archivos que por su NOMBRE parecen guardar una credencial. Ninguno de estos
 # debería estar versionado jamás, tenga dentro lo que tenga.
@@ -129,7 +150,10 @@ def _archivos_versionados() -> list[Path]:
 def hallazgos() -> list[tuple[str, str, int, str]]:
     """(archivo, patrón, línea, texto) de cada coincidencia no exceptuada."""
     encontrados = []
-    compilados = [(nombre, re.compile(patron)) for nombre, patron in PATRONES_PROHIBIDOS]
+    compilados = [
+        (nombre, re.compile(patron))
+        for nombre, patron in PATRONES_PROHIBIDOS + PATRONES_LOCALES
+    ]
 
     for ruta in _archivos_versionados():
         relativa = ruta.relative_to(RAIZ).as_posix()
@@ -155,6 +179,20 @@ def test_ningun_identificador_interno_en_archivos_versionados(hallazgos):
             f"versionados. El repositorio se publica: hay que sacarlos, o "
             f"justificarlos en EXCEPCIONES.\n\n{detalle}"
         )
+
+
+def test_la_lista_local_de_identificadores_esta_cargada():
+    """Sin la lista local, el control de identificadores concretos no corre.
+
+    No es una falla: en un clon ajeno la lista no existe por diseño. Se marca
+    como omitida para que quede a la vista en la salida de pytest.
+    """
+    if not PATRONES_LOCALES:
+        pytest.skip(
+            "config/confidencialidad.local.txt no está presente: sólo corrieron los "
+            "patrones genéricos."
+        )
+    assert len(PATRONES_LOCALES) >= 5
 
 
 def test_ningun_archivo_versionado_parece_una_credencial():
