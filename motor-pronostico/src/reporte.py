@@ -22,6 +22,12 @@ Archivo                        Destino en la tesis
 El manifiesto (RN-6) registra el hash del archivo de datos, la versión del
 código, la configuración usada y el hash de cada salida producida. Con él,
 cualquier número del documento se puede rastrear hasta la corrida que lo generó.
+
+Los archivos auxiliares de la captura (costos, quiebres, tipo de cambio, mapeo
+de SKU y manifiesto de extracción) se sellan también, bajo
+``datos.auxiliares``: nombre, bytes y SHA-256 de cada archivo del directorio de
+datos crudos, con la marca de si la corrida lo lee. Sólo se publican hashes y
+tamaños, nunca contenido.
 """
 
 from __future__ import annotations
@@ -48,6 +54,58 @@ def _sha256(ruta: Path) -> str:
         for bloque in iter(lambda: fh.read(1 << 20), b""):
             h.update(bloque)
     return h.hexdigest()
+
+
+def archivos_auxiliares(cfg: Config, ruta_datos: Path) -> list[dict]:
+    """Nombre, bytes y SHA-256 de cada archivo de la captura junto al de ventas.
+
+    Se sella TODO archivo del directorio de datos crudos (salvo el de ventas,
+    que ya figura en ``datos``, y los ocultos como ``.gitkeep``): los que la
+    corrida lee (costos, quiebres, tipo de cambio) y los que acompañan a la
+    captura sin leerse (mapeo de SKU, manifiesto de extracción), cada uno con
+    ``leido_por_la_corrida``. Así el manifiesto fija la captura completa y no
+    sólo el archivo principal.
+
+    Un archivo que la corrida lee FUERA de ese directorio (porque la
+    configuración apunta los quiebres o el tipo de cambio a otra carpeta) se
+    sella igual, con su ruta en ``archivo``: si no, el manifiesto dejaría sin
+    sello justo un insumo que cambió de lugar.
+    """
+    ruta_datos = Path(ruta_datos)
+    directorio = ruta_datos.parent
+
+    leidos = {(directorio / "costos.csv").resolve()}  # src/costos.py
+    v2 = cfg.features.v2
+    if v2.get("quiebres") and cfg.features.archivo_quiebres:
+        leidos.add((cfg.raiz / cfg.features.archivo_quiebres).resolve())
+    if v2.get("tipo_cambio") and cfg.features.archivo_tipo_cambio:
+        leidos.add((cfg.raiz / cfg.features.archivo_tipo_cambio).resolve())
+
+    def _sello(ruta: Path, nombre: str) -> dict:
+        return {
+            "archivo": nombre,
+            "bytes": ruta.stat().st_size,
+            "sha256": _sha256(ruta),
+            "leido_por_la_corrida": ruta.resolve() in leidos,
+        }
+
+    auxiliares = []
+    sellados: set[Path] = set()
+    if directorio.is_dir():
+        for ruta in sorted(directorio.iterdir(), key=lambda r: r.name):
+            if (not ruta.is_file() or ruta.name.startswith(".")
+                    or ruta.resolve() == ruta_datos.resolve()):
+                continue
+            auxiliares.append(_sello(ruta, ruta.name))
+            sellados.add(ruta.resolve())
+    for ruta in sorted(leidos - sellados, key=str):
+        if ruta.is_file() and ruta != ruta_datos.resolve():
+            try:
+                nombre = ruta.relative_to(Path(cfg.raiz).resolve()).as_posix()
+            except ValueError:
+                nombre = ruta.as_posix()
+            auxiliares.append(_sello(ruta, nombre))
+    return auxiliares
 
 
 def raiz_del_repositorio(desde: Path) -> Path | None:
@@ -310,6 +368,7 @@ class Reporte:
                 "archivo": str(ruta_datos),
                 "sha256": _sha256(ruta_datos) if Path(ruta_datos).exists() else None,
                 "bytes": Path(ruta_datos).stat().st_size if Path(ruta_datos).exists() else None,
+                "auxiliares": archivos_auxiliares(self.cfg, ruta_datos),
             },
             "codigo": _version_del_codigo(self.cfg.raiz),
             "dependencias": _versiones_de_dependencias(),
