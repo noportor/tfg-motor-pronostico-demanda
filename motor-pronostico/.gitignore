@@ -35,6 +35,9 @@ notebooks/.ipynb_checkpoints/
 # El esquema interno del sistema de origen (nombres de base, esquema, tabla y
 # columnas) esta cubierto por el mismo acuerdo de confidencialidad que los datos.
 config/extraccion.local.yaml
+# Los identificadores concretos de la empresa que busca la prueba de
+# confidencialidad: la lista misma los revelaría.
+config/confidencialidad.local.txt
 
 # Credenciales sueltas. Van ANTES de que a alguien se le ocurra dejar una aca:
 # un token en el historial de git hay que darlo por quemado aunque se borre
