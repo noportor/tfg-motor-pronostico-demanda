@@ -119,7 +119,9 @@ EXCEPCIONES.update({
 
 # Rutas versionadas que no se revisan. Los documentos ofimáticos son binarios
 # comprimidos: el control NO los inspecciona, y esa limitación se declara en el
-# README. Lo que entre en `documento/` hay que revisarlo a ojo.
+# README. Por eso .docx, .xlsx, .pdf, .pptx y .zip no pueden versionarse (lo
+# exige test_no_se_versiona_ningun_documento_ofimatico_ni_comprimido); las
+# imágenes sí, y lo que entre en `documento/` hay que revisarlo a ojo.
 EXTENSIONES_BINARIAS = {
     ".png", ".pdf", ".xlsx", ".ico", ".jpg", ".jpeg",
     ".docx", ".doc", ".pptx", ".ppt", ".odt", ".zip",
@@ -237,4 +239,35 @@ def test_no_se_versiona_la_configuracion_de_extraccion():
     )
     assert f"{SUBCARPETA}config/extraccion.ejemplo.yaml" in versionados, (
         "Falta la plantilla: sin ella nadie puede reproducir la extracción."
+    )
+
+
+#: Documentos ofimáticos y comprimidos: el control de contenido no puede mirar
+#: adentro (son binarios), así que no se versionan nunca. La tesis y las
+#: observaciones del tribunal viven en carpetas ignoradas.
+EXTENSIONES_PROHIBIDAS = {".docx", ".xlsx", ".pdf", ".pptx", ".zip"}
+
+
+def test_no_se_versiona_ningun_documento_ofimatico_ni_comprimido():
+    """Ningún .docx, .xlsx, .pdf, .pptx ni .zip versionado en el repositorio.
+
+    El control de identificadores lee texto: un binario de Office o un
+    comprimido podría llevar datos o nombres de la empresa sin que ninguna
+    prueba lo vea. En lugar de declarar la limitación, se prohíbe versionarlos.
+    """
+    salida = subprocess.run(
+        ["git", "-C", str(RAIZ), "ls-files"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if salida.returncode != 0:
+        pytest.skip("No es un repositorio git: no hay nada que publicar todavía.")
+    prohibidos = [
+        linea for linea in salida.stdout.splitlines()
+        if Path(linea).suffix.lower() in EXTENSIONES_PROHIBIDAS
+    ]
+    assert not prohibidos, (
+        f"Hay documentos ofimáticos o comprimidos versionados: {prohibidos}. "
+        f"El control de confidencialidad no puede revisar su contenido; "
+        f"sacalos del repositorio (git rm --cached) y dejalos en una carpeta "
+        f"ignorada."
     )

@@ -80,7 +80,16 @@ de Nemenyi).
   cada variante experimental se registra con `--anular clave=valor` y queda
   asentada en el manifiesto, de modo que dos corridas distintas nunca pueden
   confundirse.
-- **Manifiesto por corrida**: registra el SHA-256 del snapshot de datos, la
+- **Sensibilidad de la cohorte**: `config/config_sensibilidad_a.yaml` (cohorte
+  fijada al origen de la prueba, sin exigir presencia en prueba y con cada serie
+  viva hasta el fin del período) y `config/config_sensibilidad_b.yaml` (la
+  misma, sólo con las series activas al origen) heredan todo de
+  `config/config.yaml` y sobrescriben sólo esos interruptores y el directorio
+  de salidas: `python main.py ejecutar --config config/config_sensibilidad_a.yaml`.
+  Los valores por defecto de los interruptores reproducen la corrida publicada.
+- **Manifiesto por corrida**: registra el SHA-256 del snapshot de datos y de
+  cada archivo auxiliar de la captura (costos, quiebres, tipo de cambio, mapeo y
+  manifiesto de extracción, con nombre y bytes, bajo `datos.auxiliares`), la
   configuración efectiva y la versión del código con que se obtuvo cada
   resultado.
 - **Contraste sobre lo publicado**: las pruebas estadísticas se ejecutan sobre
