@@ -14,6 +14,9 @@ scikit-learn==1.8.0
 matplotlib==3.10.8
 lightgbm==4.7.0
 scikit-posthocs==0.14.0
+# Dependencias transitivas de scikit-posthocs, fijadas: statsmodels 0.15 rompe la importación.
+statsmodels==0.14.6
+patsy==1.0.2
 openpyxl==3.1.5
 PyYAML==6.0.2
 pytest==8.3.4

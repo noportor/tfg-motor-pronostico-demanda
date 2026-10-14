@@ -43,8 +43,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install "scikit-learn==1.8.0" "lightgbm==4.7.0"
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install "matplotlib==3.10.8" "openpyxl==3.1.5" "PyYAML==6.0.2" "pytest==8.3.4"
+# statsmodels y patsy se fijan explícitamente: scikit-posthocs los arrastra sin
+# versión, y statsmodels 0.15 quitó la función que scikit-posthocs 0.14 importa
+# (la imagen dejó de construirse el 2026-10-14 por esa dependencia flotante).
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install "scikit-posthocs==0.14.0"
+    pip install "statsmodels==0.14.6" "patsy==1.0.2" "scikit-posthocs==0.14.0"
 # Optuna: SOLO lo usa scripts/ajustar_lightgbm.py (la búsqueda corre una vez,
 # fuera del pipeline). Vive en la imagen para que la búsqueda sea reproducible
 # con las mismas versiones que el resto del experimento.
