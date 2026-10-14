@@ -249,6 +249,85 @@ def test_el_manifiesto_registra_la_trazabilidad(corrida):
         assert len(salida["sha256"]) == 64
 
 
+def test_el_manifiesto_sella_los_auxiliares_de_la_captura(corrida):
+    """Costos, quiebres y tipo de cambio: nombre, bytes y SHA-256 en el manifiesto."""
+    manifiesto = json.loads(
+        (corrida.ruta_salidas / "manifiesto.json").read_text(encoding="utf-8")
+    )
+    auxiliares = {a["archivo"]: a for a in manifiesto["datos"]["auxiliares"]}
+    directorio = corrida.ruta_datos.parent
+
+    for nombre in ("costos.csv", "quiebres.csv", "tipo_cambio.csv"):
+        assert nombre in auxiliares, f"{nombre} no quedó sellado en el manifiesto"
+        sello = auxiliares[nombre]
+        assert sello["leido_por_la_corrida"] is True
+        assert sello["bytes"] == (directorio / nombre).stat().st_size
+        assert sello["sha256"] == hashlib.sha256(
+            (directorio / nombre).read_bytes()
+        ).hexdigest()
+    # El archivo de ventas ya está en datos.archivo: no se duplica.
+    assert corrida.ruta_datos.name not in auxiliares
+
+
+def test_los_auxiliares_se_sellan_todos_aunque_no_se_lean(cfg, tmp_path):
+    """Cada archivo de la captura queda sellado, se lea o no; y un insumo leído
+    fuera del directorio de ventas también. Archivos sintéticos (RN-1)."""
+    from dataclasses import replace
+    from pathlib import Path
+
+    from src.reporte import archivos_auxiliares
+
+    captura = tmp_path / "crudo"
+    captura.mkdir()
+    contenidos = {
+        "ventas.csv": "a,b\n1,2\n",
+        "costos.csv": "sku,costo\nX,1\n",
+        "tipo_cambio.csv": "periodo,tc\n2020-01,1\n",
+        "mapeo_sku.csv": "x,y\n",
+        "manifiesto_extraccion.json": "{}",
+        ".gitkeep": "",
+    }
+    for nombre, texto in contenidos.items():
+        (captura / nombre).write_text(texto, encoding="utf-8")
+    otra = tmp_path / "otra"
+    otra.mkdir()
+    (otra / "quiebres.csv").write_text("q\n1\n", encoding="utf-8")
+
+    cfg_t = replace(cfg, features=replace(
+        cfg.features,
+        v2={**cfg.features.v2, "quiebres": True, "tipo_cambio": True},
+        archivo_quiebres=str(otra / "quiebres.csv"),
+        archivo_tipo_cambio=str(captura / "tipo_cambio.csv"),
+    ))
+    sellos = {a["archivo"]: a for a in archivos_auxiliares(cfg_t, captura / "ventas.csv")}
+
+    leidos = {n: s["leido_por_la_corrida"] for n, s in sellos.items()}
+    assert leidos == {
+        "costos.csv": True,
+        "manifiesto_extraccion.json": False,
+        "mapeo_sku.csv": False,
+        "tipo_cambio.csv": True,
+        (otra / "quiebres.csv").resolve().as_posix(): True,
+    }
+    for nombre, sello in sellos.items():
+        ruta = captura / nombre if "/" not in nombre else Path(nombre)
+        assert sello["bytes"] == ruta.stat().st_size
+        assert sello["sha256"] == hashlib.sha256(ruta.read_bytes()).hexdigest()
+
+
+def test_el_registro_de_flujo_declara_los_interruptores_de_cohorte(corrida):
+    flujo = json.loads(
+        (corrida.ruta_salidas / "flujo.json").read_text(encoding="utf-8")
+    )
+    etapas = {e["id"]: e for e in flujo["etapas"]}
+    assert etapas["particion_cohorte"]["decisiones"]["interruptores_cohorte"] == {
+        "inclusion.exigir_presencia_prueba": True,
+        "series.extender_vida_hasta_fin_periodo": False,
+        "inclusion.estado_al_origen": "todas",
+    }
+    assert etapas["series"]["decisiones"]["extender_vida_hasta_fin_periodo"] is False
+
+
 def test_el_motor_eligio_entre_los_candidatos_declarados(corrida):
     seleccion = pd.read_csv(corrida.ruta_salidas / "seleccion_motor.csv")
     elegidos = set(seleccion["modelo_elegido"])
