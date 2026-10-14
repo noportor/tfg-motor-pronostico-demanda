@@ -965,9 +965,17 @@ def figura_contribuciones(
     Barras horizontales emparejadas por variable: la oscura es la contribución
     absoluta media en los meses de pico estacional, la clara con trama en el
     resto del año. Junto a la barra del pico va la contribución CON SIGNO en
-    esos meses: dice hacia dónde empuja la variable cuando el pico ocurre, no
-    solo cuánto pesa. Responde la pregunta del tribunal con especificidad:
-    variables concretas, magnitudes concretas, dirigidas al fenómeno.
+    esos meses y, entre paréntesis, su factor exp(φ): dice hacia dónde empuja
+    la variable cuando el pico ocurre, no solo cuánto pesa.
+
+    Escala: con el objetivo Tweedie (enlace logarítmico), ``pred_contrib=True``
+    devuelve las contribuciones en la escala cruda del modelo. Su suma más el
+    valor base es el LOGARITMO de la predicción, no la predicción en unidades;
+    cada contribución φ actúa como un factor multiplicativo exp(φ) sobre la
+    predicción (φ = +0,20 equivale a ×1,22). Como φ medio es un promedio en la
+    escala logarítmica, exp(φ medio) es el factor medio geométrico. La figura
+    describe cómo se compone la predicción, no la causa de la demanda ni la
+    mejora del error.
     """
     _estilo(dpi)
     datos = tabla.head(top).iloc[::-1].reset_index(drop=True)
@@ -985,19 +993,31 @@ def figura_contribuciones(
              linewidth=0.6, label="resto del año")
 
     for i, fila in datos.iterrows():
+        # Rótulo y factor salen del MISMO φ redondeado a dos decimales, para que
+        # el lector que calcule exp(rótulo) obtenga el factor impreso (si no, dos
+        # «+0,04» mostrarían ×1,05 y ×1,04). Un φ que redondea a cero va sin signo.
+        redondeado = round(float(fila["contrib_media_pico"]), 2) + 0.0
+        rotulo = _es(redondeado, 2, signo=redondeado != 0.0)
         eje.text(fila["contrib_abs_media_pico"], i + alto / 2,
-                 f"  {_es(fila['contrib_media_pico'], 2, signo=True)}",
+                 f"  {rotulo} (×{_es(float(np.exp(redondeado)), 2)})",
                  va="center", ha="left", fontsize=7.0)
 
     etiquetas = [ETIQUETAS_FEATURES.get(f, f) for f in datos["feature"]]
     eje.set_yticks(posiciones)
     eje.set_yticklabels(etiquetas, fontsize=8)
-    eje.set_xlabel("Contribución TreeSHAP media |φ| a la predicción mensual (unidades)")
+    eje.set_xlabel(
+        "Contribución TreeSHAP media |φ| en la escala logarítmica del modelo "
+        "(objetivo Tweedie)\n"
+        "cada φ multiplica la predicción por exp(φ); "
+        "rótulo: φ medio con signo en el pico (factor)",
+        fontsize=8,
+    )
     eje.legend(frameon=False, fontsize=8, ncols=2,
                loc="lower right", bbox_to_anchor=(1.0, 1.005))
     eje.grid(axis="y", visible=False)
-    eje.set_xlim(left=0)
-    eje.margins(x=0.18)
+    eje.xaxis.set_major_formatter(FuncFormatter(lambda v, _: _es(v, 2)))
+    tope = datos[["contrib_abs_media_pico", "contrib_abs_media_resto"]].to_numpy().max()
+    eje.set_xlim(0, 1.32 * float(tope))
     return _guardar(figura, destino)
 
 

@@ -148,3 +148,105 @@ def test_pareto_excluye_series_sin_costo():
 
     assert list(pareto["sku"]) == ["SKU-1"]
     assert pareto["demanda_valorizada"].iloc[0] == pytest.approx(120.0)
+
+
+# --- escala de las contribuciones TreeSHAP con el objetivo Tweedie ----------
+
+def _modelo_tweedie_sintetico():
+    """LightGBM Tweedie sobre un panel sintético, envuelto en ModeloLightGBM.
+
+    Se arma la tabla larga a mano (serie, periodo, features, y) y se inyecta el
+    booster: lo que se prueba es la escala de ``contribuciones()``, no la
+    construcción de features.
+    """
+    lgb = pytest.importorskip("lightgbm")
+    from src.modelos.lightgbm_modelo import ModeloLightGBM
+
+    rng = np.random.default_rng(20260408)
+    series = [f"SKU-{i}|C|R" for i in range(12)]
+    periodos = pd.period_range("2020-01", periods=36, freq="M")
+    filas = []
+    for i, serie in enumerate(series):
+        nivel = 5.0 + 3.0 * i
+        for t, periodo in enumerate(periodos):
+            estacion = 1.0 + 0.6 * np.sin(2 * np.pi * periodo.month / 12)
+            rezago = nivel * (1.0 + 0.6 * np.sin(2 * np.pi * (periodo.month - 1) / 12))
+            filas.append({
+                "serie": serie, "periodo": periodo,
+                "nivel": nivel, "mes": periodo.month, "rezago_1": rezago,
+                "y": float(rng.poisson(nivel * estacion)),
+            })
+    tabla = pd.DataFrame(filas)
+    columnas = ["nivel", "mes", "rezago_1"]
+
+    # El objetivo y la potencia salen de la configuración publicada: la prueba
+    # verifica la escala del modelo que produjo la Figura 6, no la de otro.
+    from src.config import cargar_config
+    parametros = cargar_config().modelos["lightgbm"]
+    booster = lgb.train(
+        {"objective": parametros["objective"],
+         "tweedie_variance_power": parametros["tweedie_variance_power"],
+         "learning_rate": 0.1, "num_leaves": 15, "min_data_in_leaf": 5,
+         "seed": 1, "num_threads": 1, "deterministic": True,
+         "force_row_wise": True, "verbosity": -1},
+        lgb.Dataset(tabla[columnas], label=tabla["y"]),
+        num_boost_round=60,
+    )
+    modelo = ModeloLightGBM.__new__(ModeloLightGBM)
+    modelo.tabla = tabla
+    modelo.columnas = columnas
+    modelo.booster = booster
+    panel = pd.DataFrame(
+        0.0, index=periodos[-12:], columns=series
+    )
+    return modelo, panel, booster, columnas
+
+
+def test_la_configuracion_publicada_usa_el_objetivo_tweedie():
+    """Los rótulos en escala logarítmica valen mientras el objetivo sea Tweedie.
+
+    Si alguien cambia el objetivo de LightGBM, esta prueba obliga a revisar la
+    lectura de las contribuciones (docstrings, flujo.json y Figura 6).
+    """
+    from src.config import cargar_config
+
+    assert cargar_config().modelos["lightgbm"]["objective"] == "tweedie"
+
+
+def test_contribuciones_tweedie_suman_el_puntaje_crudo_logaritmico():
+    """valor base + suma(contribuciones) = raw_score, y exp(raw_score) = predicción.
+
+    Con el objetivo Tweedie, TreeSHAP de LightGBM devuelve las contribuciones en
+    la escala cruda del modelo (enlace logarítmico): su suma más el valor base
+    es el LOGARITMO de la predicción, no la predicción en unidades.
+    """
+    modelo, panel, booster, columnas = _modelo_tweedie_sintetico()
+
+    contribuciones = modelo.contribuciones(panel)
+    filas = modelo._filas_de(panel)
+    crudo = booster.predict(filas[columnas], raw_score=True,
+                            num_iteration=booster.best_iteration)
+    prediccion = booster.predict(filas[columnas],
+                                 num_iteration=booster.best_iteration)
+
+    suma = contribuciones[columnas].sum(axis=1).to_numpy() + contribuciones[
+        "valor_base"].to_numpy()
+    np.testing.assert_allclose(suma, crudo, rtol=0, atol=1e-9)
+    np.testing.assert_allclose(np.exp(suma), prediccion, rtol=1e-9)
+    # Y por eso NO suman la predicción en unidades: leerlas así es un error.
+    assert not np.allclose(suma, prediccion, rtol=1e-3)
+
+
+def test_una_contribucion_tweedie_es_un_factor_multiplicativo():
+    """Quitar la contribución c de una variable divide la predicción por exp(c)."""
+    modelo, panel, booster, columnas = _modelo_tweedie_sintetico()
+
+    contribuciones = modelo.contribuciones(panel)
+    prediccion = np.exp(contribuciones[columnas].sum(axis=1)
+                        + contribuciones["valor_base"])
+    c = contribuciones["rezago_1"]
+    sin_rezago = np.exp(contribuciones[["nivel", "mes"]].sum(axis=1)
+                        + contribuciones["valor_base"])
+    np.testing.assert_allclose(prediccion / sin_rezago, np.exp(c), rtol=1e-9)
+    # +0,20 en la escala del modelo es un 22 % más sobre la predicción.
+    assert np.exp(0.20) == pytest.approx(1.2214, abs=1e-4)
