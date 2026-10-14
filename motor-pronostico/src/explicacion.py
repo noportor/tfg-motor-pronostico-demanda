@@ -8,6 +8,11 @@ Dos análisis pensados para la constatación de la propuesta (y su defensa):
   el análisis no agrega ninguna dependencia al entorno que produce los números.
   Responde con especificidad *qué variables influyen* cuando el modelo anticipa
   el pico de demanda, en lugar de mostrar solo la importancia global.
+  Escala: con el objetivo ``tweedie`` las contribuciones están en la escala
+  logarítmica del modelo (valor base más contribuciones = logaritmo de la
+  predicción), no en unidades; cada contribución ``c`` es un factor
+  multiplicativo ``exp(c)`` sobre la predicción. Explican la PREDICCIÓN del
+  modelo, no la diferencia de error entre modelos, y no tienen lectura causal.
 
 - **Pareto de la demanda valorizada por SKU**: qué fracción del portafolio
   concentra el valor. Es el fundamento empírico de la ponderación por costo de
@@ -62,7 +67,9 @@ def agregar_contribuciones(
 
     Args:
         contribuciones: una fila por predicción, con las columnas de features
-            (la contribución de cada una, en unidades de la predicción), más
+            (la contribución de cada una en la escala cruda del modelo: con el
+            objetivo ``tweedie``, logarítmica; cada contribución ``c`` es un
+            factor multiplicativo ``exp(c)`` sobre la predicción), más
             ``serie`` y ``periodo``.
         columnas: nombres de las features (el orden del modelo).
         meses: meses calendario considerados de pico.
@@ -71,8 +78,12 @@ def agregar_contribuciones(
         Una fila por feature, ordenada por contribución absoluta media en el
         bloque completo, con la participación porcentual de cada feature sobre
         el total de contribución absoluta y las medias absoluta y con signo
-        dentro y fuera del pico. La media CON SIGNO en el pico dice hacia dónde
-        empuja la variable cuando el pico ocurre; la absoluta dice cuánto pesa.
+        dentro y fuera del pico, todas en la misma escala que la entrada. La
+        media CON SIGNO en el pico dice hacia dónde empuja la variable cuando el
+        pico ocurre (una media de +0,20 en escala logarítmica es un factor
+        medio de exp(0,20) ≈ 1,22 sobre la predicción); la absoluta dice cuánto
+        pesa. La participación porcentual es el reparto de las contribuciones
+        absolutas en esa escala.
     """
     es_pico = contribuciones["periodo"].dt.month.isin(meses)
     pico = contribuciones.loc[es_pico, columnas]

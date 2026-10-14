@@ -148,10 +148,29 @@ class ModeloLightGBM:
     def contribuciones(self, datos: pd.DataFrame) -> pd.DataFrame:
         """Contribuciones TreeSHAP de cada feature a cada predicción.
 
-        Usa el TreeSHAP nativo de LightGBM (``pred_contrib=True``): para cada
-        fila, la predicción es exactamente el valor base más la suma de las
-        contribuciones — una descomposición aditiva y exacta, no una
-        aproximación. No agrega dependencias al entorno.
+        Usa el TreeSHAP nativo de LightGBM (``pred_contrib=True``), una
+        descomposición aditiva y exacta, no una aproximación, que no agrega
+        dependencias al entorno.
+
+        Escala: LightGBM devuelve las contribuciones en la escala CRUDA del
+        modelo, la del puntaje antes de la función de enlace. Con el objetivo
+        ``tweedie`` el enlace es logarítmico, de modo que para cada fila
+
+            valor_base + suma(contribuciones) = raw_score = log(predicción)
+
+        y NO la predicción en unidades. Cada contribución ``c`` actúa como un
+        factor multiplicativo ``exp(c)`` sobre la predicción: +0,20 equivale a
+        multiplicarla por exp(0,20) ≈ 1,22 (un 22 % más), y la suma de todas
+        recompone ``predicción = exp(valor_base) × Π exp(c)``. Las magnitudes
+        absolutas y sus participaciones porcentuales son comparables entre
+        variables dentro de esa escala; leerlas como unidades vendidas es un
+        error. La prueba ``tests/test_explicacion.py`` lo verifica con datos
+        sintéticos y el mismo objetivo.
+
+        Returns:
+            Una fila por predicción con la contribución de cada feature (escala
+            logarítmica del modelo), ``valor_base`` (misma escala), ``serie`` y
+            ``periodo``.
         """
         if self.booster is None:
             raise RuntimeError("Hay que llamar a ajustar() antes que a contribuciones().")
