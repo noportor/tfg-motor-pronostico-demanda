@@ -52,7 +52,7 @@ def test_ma2_recursivo_a_mano():
     esperado = [15.0, 17.5, 16.25]
     assert np.allclose(proyeccion.iloc[:, 0].to_numpy(), esperado), (
         "La recursión del promedio móvil debe realimentar sus pronósticos, "
-        "como el práctica vigente"
+        "como la práctica vigente"
     )
 
 
@@ -303,7 +303,7 @@ def test_config_valida_motor_seleccion(cfg):
 def test_exogenas_futuras_persisten_el_valor_del_origen(cfg):
     """La política declarada del multihorizonte: las exógenas futuras valen su
     último valor CONOCIDO al origen — nunca el valor real futuro (fuga) ni un
-    cero inventado (el defecto del práctica vigente)."""
+    cero inventado."""
     from types import SimpleNamespace
 
     from src.multihorizonte import ProyectorLightGBM

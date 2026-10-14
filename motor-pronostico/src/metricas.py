@@ -130,7 +130,7 @@ def metricas_por_serie(
     #   error_compuesto_unidades  = MAE  + |media(p) − media(y)|  (todo en unidades)
     #
     # La primera es la que reproduce la lectura «el modelo se equivoca un N %»;
-    # la segunda es la regla nativa del motor de referencia.
+    # la segunda es la regla de selección declarada del motor.
     tabla["error_compuesto_pct"] = tabla["mape"] + tabla["bias"].abs()
     tabla["error_compuesto_unidades"] = tabla["mae"] + tabla["bias_unidades"].abs()
 

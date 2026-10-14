@@ -31,7 +31,7 @@ Decisiones del protocolo, declaradas
   origen se emite el abanico h=1..H de una sola vez. Parámetros congelados del
   ajuste único; el estado que avanza es la ventana de historia observada
   (RN-2; se declara la asimetría con LightGBM, que replica el
-  re-entrenamiento mensual del práctica vigente).
+  re-entrenamiento mensual previsto para la operación).
 - **Pérdida configurable, Tweedie incluida.** La V1 (pérdidas puntuales y
   binomial negativa) reprodujo en las redes la lección del estudio: el sesgo
   de la pérdida domina sobre la arquitectura (todas subestimaron). La V2

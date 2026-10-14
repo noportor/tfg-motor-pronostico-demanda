@@ -120,8 +120,8 @@ class ConfigMultihorizonte:
     origenes: str  # "rodantes" | "fijo"
     reentrenar_lightgbm: bool
     # V5: el brazo directo también puede re-entrenar por origen (misma
-    # excepción declarada que el recursivo: el práctica vigente
-    # re-entrena en cada corrida mensual; árboles congelados del ajuste base).
+    # excepción declarada que el recursivo: en operación el modelo global
+    # se re-entrena en cada corrida mensual; árboles congelados del ajuste base).
     reentrenar_directo: bool = False
     # Ablación (apagada por defecto): los brazos ESTADÍSTICOS re-estiman sus
     # parámetros en cada origen con la historia disponible hasta ese origen,

@@ -295,7 +295,7 @@ def clasificar_estados(
 ) -> pd.Series:
     """Estado de actividad de cada serie al cierre de entrenamiento.
 
-    Es el molde del práctica de planificación de la empresa, medido sobre la
+    Es el molde de la práctica de planificación de la empresa, medido sobre la
     actividad OBSERVADA (la corrección del evento vive solo en el ajuste):
 
     - ``insuficiente``: sin ninguna venta positiva en entrenamiento.

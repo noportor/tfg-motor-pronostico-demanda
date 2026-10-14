@@ -3,21 +3,21 @@
 §10 de los requerimientos prohíbe expresamente sustituir el promedio móvil por
 una versión más débil que la que usa la empresa para agrandar la mejora. Por eso
 las ventanas no son arbitrarias: son las que Planificación aplica hoy, tal como
-están implementadas en el práctica vigente.
+las relevó el estudio.
 
 - ``ma_2``  = (y(t−1) + y(t−2)) / 2 — el bimestre móvil.
 - ``ma_12`` = media de los doce meses previos — el año móvil.
 - las variantes ``_gf`` suman el factor de crecimiento del año móvil, que es
   como el área corrige por tendencia.
 
-Una precisión importante para la memoria: el promedio móvil del sistema en
-producción es **recursivo** (se realimenta con sus propios pronósticos y por eso
-converge de forma asintótica). Este módulo implementa la fórmula a un paso,
+Una precisión importante para la memoria: el promedio móvil, tal como lo
+aplica Planificación a más de un mes, es **recursivo** (se realimenta con sus
+propios pronósticos y por eso converge de forma asintótica). Este módulo implementa la fórmula a un paso,
 porque la RN-4 fija así la evaluación principal; a un mes de horizonte las dos
 formulaciones coinciden exactamente. El caso recursivo con horizonte mayor que
 uno SÍ forma parte del experimento, pero vive en ``src/multihorizonte.py``: la
 proyección multihorizonte extiende el panel y realimenta estas mismas fórmulas
-mes a mes, que es literalmente la recursión del práctica vigente.
+mes a mes, que es literalmente la recursión de la práctica vigente.
 """
 
 from __future__ import annotations
