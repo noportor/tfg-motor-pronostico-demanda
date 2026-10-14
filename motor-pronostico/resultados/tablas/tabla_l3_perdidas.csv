@@ -1,0 +1,4 @@
+clave,perdida,ensayos,mejor_ensayo,mejor_D,mejor_wmape,mejor_sesgo,mediana_D,mediana_sesgo,peor_ensayo,peor_D,arboles_min,arboles_max,segundos
+tweedie,Tweedie,45,48,59.737,59.571,0.166,62.356,0.379,7,71.395,33,226,281.40000000000003
+regression_l1,absoluta,8,39,72.577,59.877,-12.7,73.756,-14.4225,8,81.25,82,1053,132.8
+regression_l2,cuadrática,7,4,75.273,67.303,7.97,79.716,10.762,9,95.562,48,184,47.1

@@ -1,0 +1,152 @@
+{
+ "poblacion": 4406,
+ "muestra": 1668,
+ "excluidas": 2738,
+ "pct_valor_muestra": 95.0370808402935,
+ "pct_valor_excluidas": 4.96291915970649,
+ "por_estado": {
+  "activa": 2493,
+  "descontinuada": 1044,
+  "dormida": 227,
+  "insuficiente": 469,
+  "nueva": 81,
+  "reciente": 92
+ },
+ "control_cascada": {
+  "sin_historia_en_entrenamiento": {
+   "fuera_de_muestra": 469,
+   "cohorte_flujo": 469
+  },
+  "historial<36m": {
+   "fuera_de_muestra": 1163,
+   "cohorte_flujo": 1163
+  },
+  "ceros>0.70": {
+   "fuera_de_muestra": 796,
+   "cohorte_flujo": 796
+  },
+  "volumen<50u": {
+   "fuera_de_muestra": 15,
+   "cohorte_flujo": 15
+  },
+  "ausente_en_validacion": {
+   "fuera_de_muestra": 151,
+   "cohorte_flujo": 151
+  },
+  "ausente_en_prueba": {
+   "fuera_de_muestra": 144,
+   "cohorte_flujo": 144
+  }
+ },
+ "activas_excluidas": {
+  "series": 860,
+  "pct_valor": 3.6349980523132355,
+  "ceros_mediana": 0.7391
+ },
+ "historia_12_a_35": {
+  "series": 546,
+  "por_estado": {
+   "activa": 201,
+   "descontinuada": 279,
+   "dormida": 66
+  }
+ },
+ "historia_1_a_11": 617,
+ "historia_36_o_mas": 2774,
+ "costo_faltante": {
+  "alcance": "series con historia de entrenamiento",
+  "productos_poblacion": 684,
+  "productos_con_historia": 610,
+  "productos_sin_costo_con_historia": 38,
+  "productos_con_costo_parcial": 0,
+  "series_con_historia": 3937,
+  "series_sin_costo_con_historia": 311,
+  "productos_muestra": 369,
+  "productos_sin_costo_muestra": 31,
+  "series_sin_costo_muestra": 155,
+  "series_con_costo_muestra": 1513,
+  "pct_volumen_entrenamiento_muestra_sin_costo": 1.6362722873268882
+ },
+ "evento_exogeno": {
+  "observaciones_en_ventana": 32229,
+  "observaciones_reemplazadas": 24194,
+  "series_afectadas": 2486,
+  "sin_historia_previa": 8035,
+  "pct_sin_historia_previa": 24.93096279748053,
+  "ventana": "2020-03..2021-02",
+  "tratamiento": "copiar_gestion_previa"
+ },
+ "inspeccion": {
+  "filas_duplicadas": 572,
+  "series_intermitentes_adi_1_32": 2599
+ },
+ "variables": {
+  "celdas_con_perdidas": 52357,
+  "filas_quiebres": 220889,
+  "series_con_precio": 4406
+ },
+ "divisiones_tipo_cambio": {
+  "tc_delta_pct": 11,
+  "tc_rezago_1": 7
+ },
+ "divisiones_rezago_1": 493,
+ "detector_regimen": {
+  "gestion_2026": {
+   "meses_activos": 7,
+   "meses": 12
+  },
+  "gestion_2025": {
+   "meses_activos": 10,
+   "meses": 12
+  }
+ },
+ "variante_sin_tratamiento_del_evento": {
+  "sin_tratamiento": {
+   "D_un_paso": 74.69326690930728,
+   "D_horizonte": 91.62725663988908
+  },
+  "principal": {
+   "D_un_paso": 75.40144342855528,
+   "D_horizonte": 91.15419335053514
+  }
+ },
+ "control_tabla_n3": {
+  "series": 1513,
+  "naive_m1": {
+   "wmape": 81.92678656502575,
+   "sesgo": -3.642073636496939,
+   "D": 85.5688602015227,
+   "demanda": 122485160.88307258,
+   "publicada": 85.56886024068041
+  },
+  "ma_2": {
+   "wmape": 79.57903680169575,
+   "sesgo": -5.356736580947771,
+   "D": 84.93577338264352,
+   "demanda": 122485160.88307258,
+   "publicada": 84.93577339161288
+  },
+  "demanda_millones": 122.48516088307258
+ },
+ "error_motor_por_estado_en_muestra": [
+  {
+   "estado": "activa",
+   "series": 1633,
+   "error_compuesto_mediano_pct": 137.31948616689505
+  },
+  {
+   "estado": "descontinuada",
+   "series": 18,
+   "error_compuesto_mediano_pct": 195.34135079576367
+  },
+  {
+   "estado": "dormida",
+   "series": 17,
+   "error_compuesto_mediano_pct": 200.0
+  }
+ ],
+ "corrida": {
+  "generado_en": "2026-10-14T19:16:49+00:00",
+  "commit": "f31684386648566a5f4584a44da763bedc632437"
+ }
+}

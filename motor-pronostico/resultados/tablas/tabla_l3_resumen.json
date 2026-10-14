@@ -1,0 +1,92 @@
+{
+ "ensayos": 60,
+ "ensayos_por_perdida": {
+  "Tweedie": 45,
+  "absoluta": 8,
+  "cuadrática": 7
+ },
+ "numeracion_desde": 0,
+ "mejor_ensayo": 48,
+ "mejor_D": 59.737,
+ "mejor_wmape": 59.571,
+ "mejor_sesgo": 0.166,
+ "peor_ensayo_global": 9,
+ "peor_D_global": 95.562,
+ "meseta_2_puntos": 16,
+ "meseta_2_puntos_por_perdida": {
+  "Tweedie": 16
+ },
+ "meseta_1_5_puntos": 9,
+ "mejor_acumulado_hasta_ensayo": {
+  "9": 62.242,
+  "19": 62.242,
+  "29": 60.723,
+  "30": 60.723,
+  "39": 60.618,
+  "47": 60.199,
+  "48": 59.737,
+  "59": 59.737
+ },
+ "ensayos_posteriores_al_mejor": 11,
+ "mejora_despues_del_ensayo_30": 0.9859999999999971,
+ "primeros_10_por_perdida": {
+  "Tweedie": 5,
+  "absoluta": 3,
+  "cuadrática": 2
+ },
+ "primeros_10_peor_tweedie": 71.395,
+ "primeros_10_mejor_otra_perdida": 73.065,
+ "spearman_tasa_arboles_tweedie": -0.8270995837161632,
+ "tasa_por_arboles_meseta": [
+  3.9376790329010833,
+  5.530974288368276
+ ],
+ "tasa_por_arboles_diez_mejores": [
+  4.253775637451759,
+  5.530974288368276
+ ],
+ "segundos_total": 461.3,
+ "segundos_mediana": 6.4,
+ "l2_elegida_sobre_techo": 0.8156063300812189,
+ "fanova_tweedie": {
+  "num_leaves": 0.2476346537134202,
+  "tweedie_variance_power": 0.19939593737944908,
+  "bagging_fraction": 0.1281095656732059,
+  "feature_fraction": 0.11405934000337037,
+  "lambda_l2": 0.21412018280286307,
+  "learning_rate": 0.04924710579229397,
+  "min_data_in_leaf": 0.04743321463539739
+ },
+ "fanova_todos_los_ensayos": {
+  "objective": 0.8428163843198497,
+  "lambda_l2": 0.08517313108273286,
+  "bagging_fraction": 0.026882930018834496,
+  "learning_rate": 0.01802047922730405,
+  "num_leaves": 0.014869838016189681,
+  "min_data_in_leaf": 0.007520891993849294,
+  "feature_fraction": 0.004716345341239778
+ },
+ "fanova_disponible": true,
+ "arboles_corrida_principal": 76,
+ "control_configuracion_igual_al_mejor_ensayo": {
+  "tweedie_variance_power": true,
+  "learning_rate": true,
+  "num_leaves": true,
+  "min_data_in_leaf": true,
+  "feature_fraction": true,
+  "bagging_fraction": true,
+  "lambda_l2": true,
+  "objective": true
+ },
+ "valores_fijos": {
+  "semilla_modelo": 20260406,
+  "hilos": 1,
+  "determinista": true,
+  "frecuencia_submuestreo_filas": 1,
+  "semilla_busqueda": 20260408,
+  "pliegue_interno": [
+   "2023-04",
+   "2024-03"
+  ]
+ }
+}
