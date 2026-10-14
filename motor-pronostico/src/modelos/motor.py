@@ -159,9 +159,9 @@ class Motor:
                 diferencia = (predicho - real).abs()
                 criterio = diferencia.mean(axis=0, skipna=True)
                 if self.informe.regla == "mae_mas_bias":
-                    # Regla nativa del motor de referencia: penaliza además el
-                    # sesgo sistemático. Se deja parametrizada porque es la que
-                    # la empresa aplica hoy.
+                    # Regla de selección declarada del estudio: penaliza además
+                    # el sesgo sistemático. Se deja parametrizada porque replica
+                    # el criterio con que Planificación compara métodos.
                     media_real = real.mean(axis=0, skipna=True)
                     media_predicha = predicho.mean(axis=0, skipna=True)
                     sesgo = (media_predicha - media_real).abs()

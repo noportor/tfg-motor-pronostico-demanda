@@ -648,7 +648,7 @@ def comando_ejecutar(cfg) -> int:
         # Ablación pre-registrada: la ventana de selección es el error
         # multihorizonte de validación (proyección recursiva desde el cierre
         # de entrenamiento) — la misma mecánica con la que el motor será
-        # evaluado, y la del backtest del práctica vigente.
+        # evaluado, la de un backtest a horizonte.
         print("      Ventana de selección: MULTIHORIZONTE sobre validación "
               "(ablación pre-registrada)")
         criterio_externo = multihorizonte.criterio_seleccion_multihorizonte(
@@ -1232,7 +1232,7 @@ def comando_ejecutar(cfg) -> int:
                 "reentrenar_directo": cfg.multihorizonte.reentrenar_directo,
                 "reestimar_estadisticos": cfg.multihorizonte.reestimar_estadisticos,
                 "seleccion_motor": "congelada de validación (RN-2)",
-                "proyeccion": "recursiva, la mecánica del práctica vigente; "
+                "proyeccion": "recursiva, la mecánica de la operación mensual; "
                               "Croston constante (sus estados solo se actualizan "
                               "con demanda observada)",
             },

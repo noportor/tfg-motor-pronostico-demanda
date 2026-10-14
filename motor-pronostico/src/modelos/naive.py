@@ -2,8 +2,7 @@
 
 ``naive_m1`` es la línea base estándar de la literatura de pronóstico (Hyndman &
 Athanasopoulos, 2021) y es además el método que INNOVA aplica de hecho en la
-mayor parte del portafolio: en el práctica vigente la mayor parte de las series
-tienen asignado exactamente este modelo.
+mayor parte del portafolio, según el relevamiento con Planificación.
 
 ``naive_m1_gf`` es la variante que la empresa usa cuando quiere corregir por
 tendencia: al último valor observado le suma el factor de crecimiento del año

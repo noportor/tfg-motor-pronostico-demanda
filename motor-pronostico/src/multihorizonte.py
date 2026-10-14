@@ -5,9 +5,8 @@ Por qué existe
 El protocolo principal del experimento evalúa a UN paso: cada mes se pronostica
 con el valor real del mes anterior. Es la comparación justa entre brazos y es el
 caso h=1 de este módulo. Pero el objetivo operativo del pronóstico en INNOVA
-es el horizonte de PLANIFICACIÓN: la corrida mensual del práctica vigente
-proyecta más de un año hacia adelante, y las decisiones de compra y producción se
-toman sobre esos meses lejanos.
+es el horizonte de PLANIFICACIÓN, que supera el año: las decisiones de compra
+y producción se toman sobre esos meses lejanos.
 
 A un paso, un modelo que proyecta línea recta (Naïve, promedio móvil, suavizado
 exponencial simple) nunca queda expuesto: se re-engancha a la realidad cada mes.
@@ -32,8 +31,8 @@ El protocolo
 - **Parámetros congelados, estado que avanza (RN-2).** Los parámetros de cada
   modelo se estimaron una sola vez con entrenamiento; lo que avanza con el
   origen es el estado (niveles, ventanas), alimentado con los meses observados.
-  LightGBM es la excepción declarada: el práctica vigente re-entrena el
-  modelo global en cada corrida mensual, así que aquí se re-entrena por origen
+  LightGBM es la excepción declarada: en operación el modelo global se
+  re-entrena en cada corrida mensual, así que aquí se re-entrena por origen
   con la historia disponible y el número de árboles CONGELADO del ajuste base
   (la parada temprana no se repite: re-mirar validación en cada origen sería
   re-optimizar, y mirar prueba sería fuga).
@@ -50,7 +49,7 @@ El protocolo
   la salida es idéntica a la del protocolo anterior, y aun con el flag
   encendido la selección del motor sigue congelada y ningún parámetro mira
   más allá del origen. El conteo de re-ajustes se reporta.
-- **Proyección recursiva** — la mecánica del práctica vigente: el
+- **Proyección recursiva** — la mecánica de la operación mensual: el
   pronóstico de cada mes se realimenta como un dato para pronosticar el
   siguiente. Con esa recursión el suavizado exponencial reproduce exactamente
   su forma cerrada (línea plana en el nivel) y Holt-Winters reproduce
@@ -91,7 +90,7 @@ def proyectar_recursivo(
 ) -> pd.DataFrame:
     """Proyecta ``horizonte`` meses realimentando las propias predicciones.
 
-    Es la mecánica del práctica vigente: el pronóstico del mes h entra al
+    Es la mecánica de la operación mensual: el pronóstico del mes h entra al
     panel como si fuera un dato y alimenta el pronóstico del mes h+1. Se trunca
     en cero ANTES de realimentar: una predicción negativa no puede propagarse
     como demanda.
@@ -127,7 +126,7 @@ def proyectar_constante(
 class ProyectorLightGBM:
     """Proyección recursiva del brazo global, con re-entrenamiento por origen.
 
-    Dos decisiones que replican al práctica vigente sin heredar sus fugas:
+    Dos decisiones que replican la operación mensual sin heredar fugas:
 
     - **Re-entrenamiento por origen** con ``num_boost_round`` congelado del
       ajuste base. La tabla de entrenamiento de cada origen es el recorte
@@ -168,8 +167,8 @@ class ProyectorLightGBM:
     def _exogenas_persistidas(self, origen: pd.Period, horizonte: int):
         """Extiende las fuentes exógenas hacia el futuro con PERSISTENCIA.
 
-        Es el reemplazo honesto del defecto del práctica vigente (que
-        proyecta con precio=0 y quiebre=0): para los meses futuros, cada
+        Es el reemplazo honesto del defecto de proyectar con precio=0 y
+        quiebre=0: para los meses futuros, cada
         exógena vale su último valor CONOCIDO al origen — el supuesto de
         persistencia, declarado. Solo se usa lo anterior al origen (sin fuga).
         """
@@ -431,8 +430,8 @@ def criterio_seleccion_multihorizonte(
     Es la ablación pre-registrada de la ventana de selección del motor: en vez
     de comparar pronósticos a un paso, cada candidato proyecta la validación
     completa desde el cierre de entrenamiento (h=1..H) con la MISMA mecánica
-    recursiva con la que después será evaluado — que es como selecciona el
-    backtest del práctica vigente.
+    recursiva con la que después será evaluado — que es como selecciona un
+    backtest a horizonte.
 
     Acepta los abanicos ya computados por ``proyecciones_validacion`` (para no
     proyectar dos veces cuando el mezclador por horizonte también los usa); si

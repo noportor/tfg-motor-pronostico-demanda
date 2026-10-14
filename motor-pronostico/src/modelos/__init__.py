@@ -19,7 +19,7 @@ Brazo                Papel
 ===================  ==========================================================
 
 Los seis primeros no son una elección del autor: son los modelos que
-Planificación aplica hoy, confirmados contra el práctica vigente. §10 lo
+Planificación aplica hoy, relevados con el área. §10 lo
 exige explícitamente — el benchmark debe ser el método real, no una versión
 debilitada.
 """

@@ -230,14 +230,14 @@ modelos:
 
   # Regla de selección del motor. Se decide mirando SOLO validación (RN-2).
   #   mae             : argmin del MAE en validación
-  #   mae_mas_bias    : argmin de MAE + |Bias| (regla nativa del motor de referencia)
+  #   mae_mas_bias    : argmin de MAE + |Bias| (la regla declarada del estudio)
   #
   # CONSISTENCIA DE LA INVESTIGACIÓN: la métrica de decisión del estudio es
   # D = WMAPE_val + |Bias_val| (captura el objetivo del pronóstico: errar poco
   # Y sin sesgo sistemático). El motor selecciona por su análogo por-serie
   # (mae + |bias|), que ordena idéntico que la versión valorizada dentro de
   # cada serie, y el contraste estadístico se parea sobre esa misma métrica.
-  # Es además la regla que el documento declara (§3.2.1) y la de producción.
+  # Es además la regla que el documento declara (§3.2.1).
   motor_regla: "mae_mas_bias"
 
   # VENTANA de selección del motor (qué error compara para elegir por serie):
@@ -245,8 +245,8 @@ modelos:
   #                   del estudio (RN-4 principal).
   #   multihorizonte: error multihorizonte sobre validación — proyección
   #                   recursiva desde el cierre de entrenamiento (h=1..12),
-  #                   la MISMA mecánica con la que después se lo evalúa. Es lo
-  #                   que hace el backtest del práctica vigente.
+  #                   la MISMA mecánica con la que después se lo evalúa: la
+  #                   de un backtest a horizonte.
   # ABLACIÓN PRE-REGISTRADA (2026-08-07, antes de ver su resultado): la corrida
   # base mostró que el motor con selección a un paso cae de 1.º a 4.º en la
   # curva D(h) — eligió modelos planos que colapsan al horizonte largo. La
@@ -308,20 +308,20 @@ features:
 # 7b. Evaluación multihorizonte (RN-4, segunda parte)
 # -----------------------------------------------------------------------------
 # El protocolo principal evalúa a UN paso (caso h=1). Pero el objetivo operativo
-# del pronóstico es el horizonte de PLANIFICACIÓN: la corrida mensual del
-# práctica vigente proyecta más de un año, y a ese horizonte un modelo que
-# proyecta línea recta ignora la campaña escolar. La RN-4 exige que esta
+# del pronóstico es el horizonte de PLANIFICACIÓN, que en la empresa supera
+# el año, y a ese horizonte un modelo que proyecta línea recta ignora la
+# campaña escolar. La RN-4 exige que esta
 # evaluación se aplique POR IGUAL a todos los modelos y se reporte POR SEPARADO
 # — este bloque hace exactamente eso.
 #
 #   origenes: "rodantes" — cada mes del bloque de prueba es un origen (la
 #             operación real re-pronostica todo el horizonte cada mes);
 #             "fijo" — un solo origen al cierre de validación (ablación).
-#   horizonte_maximo: 12 — el horizonte de planificación es mayor, pero el histórico
-#             cierra en mar-2026: h=12 es el máximo medible con realidad
-#             contra la que comparar. Se declara en la memoria.
-#   reentrenar_lightgbm: el práctica vigente re-entrena el modelo global
-#             en cada corrida mensual; aquí se replica, con el número de
+#   horizonte_maximo: 12 — el horizonte de planificación es mayor, pero el
+#             histórico cierra en mar-2026: h=12 es el máximo medible con
+#             realidad contra la que comparar. Se declara en la memoria.
+#   reentrenar_lightgbm: en operación el modelo global se re-entrena en cada
+#             corrida mensual (política del diseño); aquí se replica, con el número de
 #             árboles CONGELADO del ajuste base (la parada temprana no se
 #             repite: re-mirar validación en cada origen sería re-optimizar).
 multihorizonte:

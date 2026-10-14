@@ -186,7 +186,7 @@ class Modelo(Protocol):
 
 Once brazos (ver §11, decisión cerrada el 2026-08-06):
 
-**Métodos que la empresa usa hoy** — confirmados contra el práctica vigente.
+**Métodos que la empresa usa hoy** — relevados con el área de Planificación.
 No son una elección del autor; §10 exige que el benchmark sea el método real.
 
 - **`naive_m1`**: el valor del mes anterior. Es además la línea base estándar.
@@ -206,8 +206,9 @@ solo se midió contra métodos triviales.
 **Los dos brazos del estudio**
 
 - **`lightgbm`**: modelo global sobre todas las series, con early stopping contra
-  validación. Objetivo `regression_l1`, coherente con que la métrica principal
-  es el MAE.
+  validación. Objetivo `tweedie` con la potencia de varianza calibrada en la
+  búsqueda de hiperparámetros; la pérdida absoluta (`regression_l1`) compitió en
+  esa búsqueda y perdió en la métrica de decisión interna (`resultados/ensayos/`).
 - **`motor`**: elige por serie el modelo con menor MAE **en validación** y lo
   aplica en prueba.
 
