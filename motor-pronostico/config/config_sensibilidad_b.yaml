@@ -1,0 +1,30 @@
+# =============================================================================
+# Sensibilidad de la cohorte, variante B: «cohorte al origen, sólo activas».
+#
+# Hereda TODO de config.yaml y sobrescribe sólo los interruptores de cohorte y
+# el directorio de salidas. La configuración efectiva (base más lo de abajo)
+# queda completa en el manifiesto de la corrida, con su hash.
+#
+#   - Igual que la variante A (sin el paso 6 de la cascada; vida de cada serie
+#     hasta marzo de 2026, con ceros después de su última venta).
+#   - Además, sólo las series ACTIVAS al origen de la prueba: con venta en los
+#     seis meses previos a abril de 2025, con la regla de clasificar_estados
+#     (src/particion.py) medida al cierre de validación sobre la actividad
+#     observada. Las dormidas (6 a 11 meses sin venta) y las descontinuadas
+#     (12 o más) quedan fuera, declaradas en la cascada (paso 7).
+#
+# Ejecución:
+#   python main.py ejecutar --config config/config_sensibilidad_b.yaml
+#   docker compose run --rm tfg python main.py ejecutar --config config/config_sensibilidad_b.yaml
+# =============================================================================
+hereda_de: "config.yaml"
+
+series:
+  extender_vida_hasta_fin_periodo: true
+
+inclusion:
+  exigir_presencia_prueba: false
+  estado_al_origen: "activa"
+
+salidas:
+  directorio: "salidas_sensibilidad_b"

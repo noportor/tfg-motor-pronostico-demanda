@@ -59,7 +59,7 @@ periodo:
 #   estacionales: Categoría E (75 % nov–feb),
 #                 Categoría D (89 % nov–feb; 39 % del año en su mes pico)
 #
-# Cobertura: 685 SKUs, 4.439 series, 72,3 % del valor del negocio.
+# Cobertura: 684 SKUs, 4.406 series, 72,4 % del valor del negocio.
 # Los nombres de categoría son términos genéricos del rubro papelero: no
 # identifican a la empresa y se declaran tal cual.
 #
@@ -105,6 +105,13 @@ series:
   # es demanda cero: es ausencia de producto.
   rellenar_ceros_intermedios: true
 
+  # Interruptor de cohorte (sensibilidad «cohorte al origen»). Con false, la
+  # corrida publicada: la vida de la serie termina en su última venta. Con true
+  # termina en el último mes del período (periodo.fin), con ceros después de la
+  # última venta; el nacimiento sigue siendo la primera venta.
+  # Ver config/config_sensibilidad_a.yaml y config_sensibilidad_b.yaml.
+  extender_vida_hasta_fin_periodo: false
+
 # -----------------------------------------------------------------------------
 # 4b. Evento exógeno — COVID-19
 # -----------------------------------------------------------------------------
@@ -143,6 +150,17 @@ inclusion:
   historial_minimo_meses: 36     # meses entre primera y última venta, en train
   proporcion_maxima_ceros: 0.70  # sobre la vida observada de la serie, en train
   volumen_minimo_unidades: 50    # acumulado en train
+
+  # Interruptores de cohorte (sensibilidad «cohorte al origen»). Los valores de
+  # abajo son los de la corrida publicada y reproducen su cascada bit a bit.
+  #   exigir_presencia_prueba: true exige presencia en el bloque de prueba
+  #     (paso 6 de la cascada, que usa información de prueba); false no aplica
+  #     el paso 6 y lo declara en la cascada.
+  #   estado_al_origen: "todas" no filtra; "activa" conserva sólo las series
+  #     activas al origen de la prueba (venta en los seis meses previos al primer
+  #     mes de prueba, regla de clasificar_estados en src/particion.py).
+  exigir_presencia_prueba: true
+  estado_al_origen: "todas"
 
 # -----------------------------------------------------------------------------
 # 6. Modelos

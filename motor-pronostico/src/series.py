@@ -13,6 +13,16 @@ Tres decisiones metodológicas viven aquí, y las tres se declaran en la memoria
 
 3. **Nacimiento y muerte de la serie = primer y último mes con venta positiva.**
    Un mes con solo devoluciones no marca el lanzamiento de un producto.
+
+Interruptor de cohorte: ``series.extender_vida_hasta_fin_periodo``
+-------------------------------------------------------------------
+Con ``false`` (por defecto, la corrida publicada) rige el punto 3. Con ``true``
+la vida de cada serie termina en el último mes del período declarado: los meses
+posteriores a la última venta existen como ceros, de modo que una serie que dejó
+de vender antes del bloque de prueba se evalúa contra ceros en lugar de
+desaparecer. El nacimiento sigue siendo la primera venta (antes del lanzamiento
+no hay producto). Es la mitad de la sensibilidad «cohorte al origen»; la otra
+mitad está en ``inclusion.exigir_presencia_prueba`` (``src/particion.py``).
 """
 
 from __future__ import annotations
@@ -41,10 +51,16 @@ class InformeSeries:
     series_construidas: int = 0
     filas_panel: int = 0
     meses_rellenados_con_cero: int = 0
+    vida_extendida_hasta_fin_periodo: bool = False
+    meses_extendidos_con_cero: int = 0
     rango: tuple[str, str] = ("", "")
     detalle: dict = field(default_factory=dict)
 
     def lineas(self) -> list[str]:
+        extension = [
+            f"  de ellas, ceros tras la última venta (vida extendida hasta el "
+            f"fin del período): {self.meses_extendidos_con_cero:,}",
+        ] if self.vida_extendida_hasta_fin_periodo else []
         return [
             f"Filas de entrada                 : {self.filas_entrada:,}",
             f"Tratamiento de devoluciones      : {self.tratamiento_devoluciones}",
@@ -57,6 +73,7 @@ class InformeSeries:
             f"Series construidas               : {self.series_construidas:,}",
             f"Filas del panel mensual          : {self.filas_panel:,}",
             f"  de ellas, ceros intercalados   : {self.meses_rellenados_con_cero:,}",
+            *extension,
             f"Rango del panel                  : {self.rango[0]} .. {self.rango[1]}",
         ]
 
@@ -89,6 +106,7 @@ def construir_series(
     informe = InformeSeries(
         filas_entrada=len(df),
         tratamiento_devoluciones=cfg.series.devoluciones,
+        vida_extendida_hasta_fin_periodo=cfg.series.extender_vida_hasta_fin_periodo,
     )
 
     trabajo = df.copy()
@@ -146,6 +164,14 @@ def construir_series(
     informe.combinaciones_sin_venta_positiva = (
         informe.combinaciones_totales - len(limites)
     )
+
+    if cfg.series.extender_vida_hasta_fin_periodo:
+        # La muerte deja de ser la última venta: todas las series viven hasta
+        # el último mes del período declarado, con ceros después de su última
+        # venta. El nacimiento no se toca.
+        fin_periodo = int(_indice_mensual(pd.PeriodIndex([cfg.periodo.fin]))[0])
+        informe.meses_extendidos_con_cero = int((fin_periodo - limites["max"]).sum())
+        limites["max"] = fin_periodo
 
     # --- Rejilla mensual, acotada a la vida de cada serie --------------------
     if cfg.series.rellenar_ceros_intermedios:

@@ -89,6 +89,12 @@ class ConfigParticion:
 class ConfigSeries:
     devoluciones: str
     rellenar_ceros_intermedios: bool
+    # Interruptor de cohorte (sensibilidad de la cohorte al origen). Con False
+    # (por defecto) la vida de cada serie va de la primera a la última venta
+    # positiva, como en la corrida publicada. Con True termina en el último mes
+    # del período declarado: los meses posteriores a la última venta existen
+    # como ceros. El nacimiento sigue siendo la primera venta.
+    extender_vida_hasta_fin_periodo: bool = False
 
 
 @dataclass(frozen=True)
@@ -104,11 +110,25 @@ class ConfigEvento:
         return pd.period_range(self.desde, self.hasta, freq="M")
 
 
+#: Valores admitidos de ``inclusion.estado_al_origen``.
+ESTADOS_AL_ORIGEN = ("todas", "activa")
+
+
 @dataclass(frozen=True)
 class ConfigInclusion:
     historial_minimo_meses: int
     proporcion_maxima_ceros: float
     volumen_minimo_unidades: float
+    # Interruptores de cohorte. Los valores por defecto reproducen exactamente
+    # la cascada publicada.
+    #   exigir_presencia_prueba: con False el paso 6 de la cascada («presente
+    #       en prueba») no se aplica: la cohorte queda fijada con información
+    #       disponible al origen de la prueba.
+    #   estado_al_origen: "todas" (por defecto) no filtra; "activa" conserva
+    #       sólo las series activas al origen (venta en los seis meses previos
+    #       al primer mes de prueba), con la regla de ``clasificar_estados``.
+    exigir_presencia_prueba: bool = True
+    estado_al_origen: str = "todas"
 
 
 @dataclass(frozen=True)
@@ -249,6 +269,77 @@ def _exigir(dic: dict, clave: str, contexto: str) -> Any:
     return dic[clave]
 
 
+def _booleano(valor: Any, clave: str) -> bool:
+    """Un interruptor tiene que ser un booleano YAML de verdad.
+
+    ``bool("false")`` es True: aceptar un texto encendería el interruptor en
+    silencio justo cuando se lo quiso apagar.
+    """
+    if isinstance(valor, bool):
+        return valor
+    raise ErrorDeConfiguracion(
+        f"{clave} debe ser true o false (booleano YAML, sin comillas); "
+        f"llegó {valor!r}."
+    )
+
+
+def _fusionar_sobre_base(base: dict, encima: dict, ruta: str = "") -> dict:
+    """Copia de ``base`` con las claves de ``encima`` sobrescritas en profundidad.
+
+    Sólo se admiten claves que ya existen en la base: una errata en el archivo
+    derivado crearía una clave nueva que nadie lee, y la corrida saldría
+    idéntica a la base sin que nadie lo note.
+    """
+    resultado = yaml.safe_load(yaml.safe_dump(base))  # copia profunda
+    for clave, valor in encima.items():
+        donde = f"{ruta}.{clave}" if ruta else str(clave)
+        if clave not in resultado:
+            raise ErrorDeConfiguracion(
+                f"El archivo derivado declara '{donde}', que no existe en la "
+                f"configuración base. Sólo se pueden sobrescribir claves "
+                f"existentes. Claves disponibles: {sorted(resultado)}"
+            )
+        if isinstance(valor, dict) and isinstance(resultado[clave], dict):
+            resultado[clave] = _fusionar_sobre_base(resultado[clave], valor, donde)
+        else:
+            resultado[clave] = valor
+    return resultado
+
+
+def _resolver_herencia(crudo: dict, ruta: Path) -> dict:
+    """Aplica ``hereda_de``: el archivo derivado sobrescribe sólo sus claves.
+
+    Las configuraciones de sensibilidad cambian dos o tres decisiones; copiar el
+    archivo base entero sería peor, porque las copias se separan con el tiempo y
+    deja de saberse en qué se diferenciaban las corridas. La configuración
+    EFECTIVA (base más lo sobrescrito) es la que se valida, se hashea y queda en
+    el manifiesto, con el nombre del archivo base en ``_hereda_de``.
+    """
+    if "hereda_de" not in crudo:
+        return crudo
+    ruta_base = Path(str(crudo["hereda_de"]))
+    if not ruta_base.is_absolute():
+        ruta_base = ruta.parent / ruta_base
+    if not ruta_base.exists():
+        raise ErrorDeConfiguracion(
+            f"{ruta.name}: hereda_de apunta a {ruta_base}, que no existe."
+        )
+    with ruta_base.open("r", encoding="utf-8") as fh:
+        base = yaml.safe_load(fh)
+    if not isinstance(base, dict):
+        raise ErrorDeConfiguracion(f"El archivo base {ruta_base} no es un mapeo YAML.")
+    if "hereda_de" in base:
+        raise ErrorDeConfiguracion(
+            f"{ruta_base.name} también declara hereda_de: se admite un solo "
+            f"nivel de herencia, para que la configuración efectiva se lea de "
+            f"un vistazo."
+        )
+    encima = {k: v for k, v in crudo.items() if k != "hereda_de"}
+    efectiva = _fusionar_sobre_base(base, encima)
+    efectiva["_hereda_de"] = ruta_base.name
+    return efectiva
+
+
 def aplicar_anulaciones(crudo: dict, anulaciones: list[str]) -> dict:
     """Aplica anulaciones puntuales del tipo ``modelos.motor_regla=mae_mas_bias``.
 
@@ -303,6 +394,8 @@ def cargar_config(
 
     if not isinstance(crudo, dict):
         raise ErrorDeConfiguracion(f"El archivo {ruta} no contiene un mapeo YAML válido.")
+
+    crudo = _resolver_herencia(crudo, ruta)
 
     if anulaciones:
         crudo = aplicar_anulaciones(crudo, anulaciones)
@@ -372,7 +465,17 @@ def cargar_config(
     series = ConfigSeries(
         devoluciones=devoluciones,
         rellenar_ceros_intermedios=bool(s.get("rellenar_ceros_intermedios", True)),
+        extender_vida_hasta_fin_periodo=_booleano(
+            s.get("extender_vida_hasta_fin_periodo", False),
+            "series.extender_vida_hasta_fin_periodo",
+        ),
     )
+    if series.extender_vida_hasta_fin_periodo and not series.rellenar_ceros_intermedios:
+        raise ErrorDeConfiguracion(
+            "series.extender_vida_hasta_fin_periodo requiere "
+            "rellenar_ceros_intermedios: true. Sin relleno el panel son sólo los "
+            "meses observados y extender la vida con ceros no tendría sentido."
+        )
 
     evento = None
     if crudo.get("evento_exogeno"):
@@ -462,7 +565,17 @@ def cargar_config(
         historial_minimo_meses=int(_exigir(i, "historial_minimo_meses", "inclusion")),
         proporcion_maxima_ceros=float(_exigir(i, "proporcion_maxima_ceros", "inclusion")),
         volumen_minimo_unidades=float(_exigir(i, "volumen_minimo_unidades", "inclusion")),
+        exigir_presencia_prueba=_booleano(
+            i.get("exigir_presencia_prueba", True),
+            "inclusion.exigir_presencia_prueba",
+        ),
+        estado_al_origen=str(i.get("estado_al_origen", "todas")).lower(),
     )
+    if inclusion.estado_al_origen not in ESTADOS_AL_ORIGEN:
+        raise ErrorDeConfiguracion(
+            f"inclusion.estado_al_origen debe ser uno de {ESTADOS_AL_ORIGEN}; "
+            f"llegó '{inclusion.estado_al_origen}'."
+        )
     if not 0.0 <= inclusion.proporcion_maxima_ceros <= 1.0:
         raise ErrorDeConfiguracion(
             "inclusion.proporcion_maxima_ceros es una proporción entre 0 y 1; "

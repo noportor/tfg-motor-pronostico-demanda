@@ -29,6 +29,30 @@ configurable.
 El desglose de cuántas series excluyó cada criterio por separado va literalmente
 al apartado «Criterios de inclusión y exclusión» de la tesis, y el N resultante
 es el tamaño de la muestra.
+
+Interruptores de cohorte (sensibilidad «cohorte al origen»)
+-----------------------------------------------------------
+La cascada publicada exige presencia en validación (paso 5) y en prueba
+(paso 6). El paso 6 usa información del bloque de prueba: una serie que dejó de
+vender antes de abril de 2025 no entra. Tres interruptores permiten medir cuánto
+pesa esa decisión; sus valores por defecto reproducen la cascada publicada bit a
+bit, y el informe de la cohorte declara siempre el valor de cada uno:
+
+- ``inclusion.exigir_presencia_prueba`` (por defecto ``true``): con ``false``
+  el paso 6 no se aplica y queda en la cascada con cero excluidas, declarado.
+- ``series.extender_vida_hasta_fin_periodo`` (por defecto ``false``, en
+  ``src/series.py``): con ``true`` cada serie vive hasta el fin del período,
+  con ceros después de su última venta. La presencia en un bloque se mide
+  entonces sobre la VIDA OBSERVADA (primera a última venta), no sobre los ceros
+  agregados: si no, toda serie quedaría «presente» por construcción.
+- ``inclusion.estado_al_origen`` (por defecto ``todas``): con ``activa`` se
+  agrega el paso 7, que conserva sólo las series activas al origen de la prueba
+  (venta en los seis meses previos), con la regla de ``clasificar_estados``
+  medida al cierre de validación sobre la actividad observada.
+
+Variante A «cohorte al origen»: ``exigir_presencia_prueba: false`` y
+``extender_vida_hasta_fin_periodo: true``. Variante B «cohorte al origen, sólo
+activas»: la A más ``estado_al_origen: activa``.
 """
 
 from __future__ import annotations
@@ -118,6 +142,68 @@ def etiquetar_bloques(panel: pd.DataFrame, particion: Particion) -> pd.DataFrame
 # Criterios de inclusión y exclusión
 # ---------------------------------------------------------------------------
 
+def interruptores_cohorte(cfg: Config) -> dict:
+    """Valor de cada interruptor de cohorte, con su clave de configuración."""
+    return {
+        "inclusion.exigir_presencia_prueba": cfg.inclusion.exigir_presencia_prueba,
+        "series.extender_vida_hasta_fin_periodo":
+            cfg.series.extender_vida_hasta_fin_periodo,
+        "inclusion.estado_al_origen": cfg.inclusion.estado_al_origen,
+    }
+
+
+def cohorte_por_defecto(cfg: Config) -> bool:
+    """True si los tres interruptores están en el valor de la corrida publicada."""
+    return (
+        cfg.inclusion.exigir_presencia_prueba
+        and not cfg.series.extender_vida_hasta_fin_periodo
+        and cfg.inclusion.estado_al_origen == "todas"
+    )
+
+
+def _presencia_en_bloques(
+    panel: pd.DataFrame, particion: Particion, cfg: Config
+) -> tuple[set, set]:
+    """Series presentes en validación y en prueba.
+
+    Con la vida acotada (por defecto) «presente» es tener filas en el bloque,
+    exactamente como en la corrida publicada. Con la vida extendida hasta el fin
+    del período todas las series tienen filas en todos los bloques posteriores
+    a su nacimiento (ceros), así que la presencia se mide sobre la vida
+    OBSERVADA: que el tramo entre la primera y la última venta toque el bloque.
+    Con relleno de ceros intermedios las dos lecturas coinciden cuando la vida
+    no está extendida.
+    """
+    if not cfg.series.extender_vida_hasta_fin_periodo:
+        en_validacion = set(
+            panel.loc[panel["periodo"].isin(particion.validacion), "serie"].unique()
+        )
+        en_prueba = set(
+            panel.loc[panel["periodo"].isin(particion.prueba), "serie"].unique()
+        )
+        return en_validacion, en_prueba
+
+    positivos = panel.loc[panel["y"] > 0].groupby("serie", observed=True)["periodo"]
+    primera = positivos.min()
+    ultima = positivos.max()
+
+    def _vida_toca(bloque: pd.PeriodIndex) -> set:
+        toca = (primera <= bloque[-1]) & (ultima >= bloque[0])
+        return set(primera.index[toca.to_numpy()])
+
+    return _vida_toca(particion.validacion), _vida_toca(particion.prueba)
+
+
+def activas_al_origen(panel_estado: pd.DataFrame, particion: Particion) -> set:
+    """Series activas al origen de la prueba (venta en los seis meses previos).
+
+    Usa la regla de ``clasificar_estados`` medida al cierre de validación, el
+    último mes conocido en el origen, sobre la actividad observada.
+    """
+    estados = clasificar_estados(panel_estado, particion.validacion[-1])
+    return set(estados.index[(estados == "activa").to_numpy()])
+
+
 @dataclass
 class InformeCohorte:
     """Diagrama de flujo de la muestra: cuántas series cayó cada criterio."""
@@ -129,8 +215,10 @@ class InformeCohorte:
     excluidas_sin_entrenamiento: int = 0
     excluidas_sin_validacion: int = 0
     excluidas_sin_prueba: int = 0
+    excluidas_no_activas_al_origen: int = 0
     series_finales: int = 0
     umbrales: dict = field(default_factory=dict)
+    interruptores: dict = field(default_factory=dict)
     flujo: list[dict] = field(default_factory=list)
     excluidas_aislado: dict = field(default_factory=dict)
 
@@ -140,6 +228,9 @@ class InformeCohorte:
     def lineas(self) -> list[str]:
         salida = [
             "Los criterios se miden SOBRE EL BLOQUE DE ENTRENAMIENTO exclusivamente.",
+            "",
+            "Interruptores de cohorte:",
+            *(f"  {clave} = {valor}" for clave, valor in self.interruptores.items()),
             "",
             "Cascada (cada paso cuenta las series que sobrevivieron a los anteriores):",
         ]
@@ -160,7 +251,10 @@ class InformeCohorte:
 
 
 def aplicar_criterios_inclusion(
-    panel: pd.DataFrame, cfg: Config, particion: Particion
+    panel: pd.DataFrame,
+    cfg: Config,
+    particion: Particion,
+    panel_estado: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, InformeCohorte]:
     """Filtra el panel a la cohorte de análisis y documenta cada exclusión.
 
@@ -169,13 +263,21 @@ def aplicar_criterios_inclusion(
     reporta además, en columna aparte, cuántas series habría excluido cada
     criterio de forma aislada: el orden de aplicación cambia el reparto de las
     exclusiones pero no el conjunto final, y el lector tiene derecho a ver ambos.
+
+    Args:
+        panel: panel largo sobre el que se miden los criterios (en el pipeline,
+            el de AJUSTE).
+        panel_estado: panel de actividad OBSERVADA para el estado al origen
+            (paso 7, sólo con ``inclusion.estado_al_origen: activa``). Si no se
+            da, se usa ``panel``.
     """
     informe = InformeCohorte(
         umbrales={
             "historial_minimo_meses": cfg.inclusion.historial_minimo_meses,
             "proporcion_maxima_ceros": cfg.inclusion.proporcion_maxima_ceros,
             "volumen_minimo_unidades": cfg.inclusion.volumen_minimo_unidades,
-        }
+        },
+        interruptores=interruptores_cohorte(cfg),
     )
 
     entrenamiento = panel.loc[panel["periodo"] <= particion.entrenamiento[-1]]
@@ -197,12 +299,9 @@ def aplicar_criterios_inclusion(
 
     # Presencia en cada bloque: una serie sin filas en prueba no puede
     # evaluarse, y una sin filas en validación no permite que el motor elija.
-    en_validacion = set(
-        panel.loc[panel["periodo"].isin(particion.validacion), "serie"].unique()
-    )
-    en_prueba = set(
-        panel.loc[panel["periodo"].isin(particion.prueba), "serie"].unique()
-    )
+    # Con la vida extendida se mide sobre la vida observada (ver el módulo).
+    en_validacion, en_prueba = _presencia_en_bloques(panel, particion, cfg)
+    vida_extendida = cfg.series.extender_vida_hasta_fin_periodo
 
     def _paso(nombre: str, sobreviven: pd.Index, antes: pd.Index) -> pd.Index:
         informe.flujo.append({
@@ -256,12 +355,39 @@ def aplicar_criterios_inclusion(
     antes = vivas
     vivas = pd.Index([s for s in vivas if s in en_validacion], name="serie")
     informe.excluidas_sin_validacion = len(antes) - len(vivas)
-    _paso("5. presente en validación", vivas, antes)
+    _paso(
+        "5. presente en validación (vida observada)" if vida_extendida
+        else "5. presente en validación",
+        vivas, antes,
+    )
 
     antes = vivas
-    vivas = pd.Index([s for s in vivas if s in en_prueba], name="serie")
-    informe.excluidas_sin_prueba = len(antes) - len(vivas)
-    _paso("6. presente en prueba", vivas, antes)
+    if cfg.inclusion.exigir_presencia_prueba:
+        vivas = pd.Index([s for s in vivas if s in en_prueba], name="serie")
+        informe.excluidas_sin_prueba = len(antes) - len(vivas)
+        _paso(
+            "6. presente en prueba (vida observada)" if vida_extendida
+            else "6. presente en prueba",
+            vivas, antes,
+        )
+    else:
+        # El paso queda en la cascada, declarado y sin excluir: quien lea la
+        # tabla ve que el criterio existe y que en esta corrida se apagó.
+        _paso("6. presente en prueba: no se aplica "
+              "(inclusion.exigir_presencia_prueba = false)", vivas, antes)
+
+    if cfg.inclusion.estado_al_origen == "activa":
+        activas = activas_al_origen(
+            panel if panel_estado is None else panel_estado, particion
+        )
+        antes = vivas
+        vivas = pd.Index([s for s in vivas if s in activas], name="serie")
+        informe.excluidas_no_activas_al_origen = len(antes) - len(vivas)
+        _paso(
+            f"7. activa al origen (venta entre {particion.validacion[-1] - 5} "
+            f"y {particion.validacion[-1]})",
+            vivas, antes,
+        )
 
     informe.series_finales = len(vivas)
     if informe.series_finales == 0:
@@ -364,12 +490,7 @@ def tabla_fuera_de_muestra(
     proporcion_ceros = pd.Series(
         np.where(meses > 0, ceros / meses.clip(lower=1), 1.0), index=todas
     )
-    en_validacion = set(
-        panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.validacion), "serie"]
-    )
-    en_prueba = set(
-        panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.prueba), "serie"]
-    )
+    en_validacion, en_prueba = _presencia_en_bloques(panel_ajuste, particion, cfg)
 
     # El motivo sigue el ORDEN de la cascada: el primero que falla, ese es.
     condiciones = [
@@ -378,7 +499,6 @@ def tabla_fuera_de_muestra(
         (proporcion_ceros > cfg.inclusion.proporcion_maxima_ceros).to_numpy(),
         (volumen < cfg.inclusion.volumen_minimo_unidades).to_numpy(),
         np.array([s not in en_validacion for s in todas]),
-        np.array([s not in en_prueba for s in todas]),
     ]
     motivos = [
         "sin_historia_en_entrenamiento",
@@ -386,8 +506,14 @@ def tabla_fuera_de_muestra(
         f"ceros>{cfg.inclusion.proporcion_maxima_ceros:.2f}",
         f"volumen<{cfg.inclusion.volumen_minimo_unidades:.0f}u",
         "ausente_en_validacion",
-        "ausente_en_prueba",
     ]
+    if cfg.inclusion.exigir_presencia_prueba:
+        condiciones.append(np.array([s not in en_prueba for s in todas]))
+        motivos.append("ausente_en_prueba")
+    if cfg.inclusion.estado_al_origen == "activa":
+        activas = activas_al_origen(panel_real, particion)
+        condiciones.append(np.array([s not in activas for s in todas]))
+        motivos.append("no_activa_al_origen")
     motivo = pd.Series(
         np.select(condiciones, motivos, default="incluida"), index=todas
     )
@@ -403,6 +529,15 @@ def tabla_fuera_de_muestra(
         "volumen_entrenamiento": volumen.round(2).to_numpy(),
     }).reset_index(drop=True)
 
+    if not cohorte_por_defecto(cfg):
+        # Sólo en las corridas de sensibilidad (la tabla publicada no cambia):
+        # el estado al ORIGEN de la prueba, para leer el resultado por estado.
+        tabla.insert(
+            2, "estado_al_origen",
+            clasificar_estados(panel_real, particion.validacion[-1])
+            .reindex(todas).fillna("insuficiente").to_numpy(),
+        )
+
     if valor_por_serie is not None and not valor_por_serie.empty:
         tabla["valor_entrenamiento"] = (
             valor_por_serie.reindex(tabla["serie"]).round(2).to_numpy()
@@ -417,6 +552,8 @@ def sensibilidad_umbrales(
     historial: tuple[int, ...] = (24, 36, 48),
     ceros: tuple[float, ...] = (0.60, 0.70, 0.80, 0.90),
     volumen: tuple[float, ...] = (0.0, 50.0, 100.0),
+    cfg: Config | None = None,
+    panel_estado: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """N de la muestra (y cobertura valorizada) para cada combinación de umbrales.
 
@@ -426,6 +563,10 @@ def sensibilidad_umbrales(
     UNA vez con la misma semántica de ``aplicar_criterios_inclusion`` (la
     consistencia la garantiza una prueba: la fila de los umbrales base debe
     reproducir exactamente el N de la cascada).
+
+    Con ``cfg`` se respetan los interruptores de cohorte (presencia sobre la
+    vida observada, paso 6 apagado, estado al origen con ``panel_estado``);
+    sin ``cfg`` rige la cascada publicada.
     """
     fin_train = particion.entrenamiento[-1]
     entrenamiento = panel_ajuste.loc[panel_ajuste["periodo"] <= fin_train]
@@ -442,15 +583,32 @@ def sensibilidad_umbrales(
     proporcion = pd.Series(
         np.where(meses > 0, ceros_train / meses.clip(lower=1), 1.0), index=todas
     )
-    en_validacion = set(
-        panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.validacion), "serie"]
-    )
-    en_prueba = set(
-        panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.prueba), "serie"]
-    )
-    presencia = pd.Series(
-        [s in en_validacion and s in en_prueba for s in todas], index=todas
-    )
+    if cfg is None:
+        en_validacion = set(
+            panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.validacion), "serie"]
+        )
+        en_prueba = set(
+            panel_ajuste.loc[panel_ajuste["periodo"].isin(particion.prueba), "serie"]
+        )
+        presencia = pd.Series(
+            [s in en_validacion and s in en_prueba for s in todas], index=todas
+        )
+    else:
+        en_validacion, en_prueba = _presencia_en_bloques(panel_ajuste, particion, cfg)
+        exigir_prueba = cfg.inclusion.exigir_presencia_prueba
+        activas = (
+            activas_al_origen(
+                panel_ajuste if panel_estado is None else panel_estado, particion
+            )
+            if cfg.inclusion.estado_al_origen == "activa" else None
+        )
+        presencia = pd.Series(
+            [s in en_validacion
+             and (not exigir_prueba or s in en_prueba)
+             and (activas is None or s in activas)
+             for s in todas],
+            index=todas,
+        )
 
     valor_total = (
         float(valor_por_serie.sum())

@@ -1,0 +1,28 @@
+# =============================================================================
+# Sensibilidad de la cohorte, variante A: «cohorte al origen».
+#
+# Hereda TODO de config.yaml y sobrescribe sólo los interruptores de cohorte y
+# el directorio de salidas. La configuración efectiva (base más lo de abajo)
+# queda completa en el manifiesto de la corrida, con su hash.
+#
+#   - No se exige presencia en el bloque de prueba (el paso 6 de la cascada no
+#     se aplica): la cohorte se fija con la información disponible al origen
+#     de la prueba (abril de 2025).
+#   - La vida de cada serie termina en el último mes del período (marzo de
+#     2026), con ceros después de su última venta: una serie que dejó de vender
+#     antes de la prueba se evalúa contra ceros en lugar de quedar fuera.
+#
+# Ejecución:
+#   python main.py ejecutar --config config/config_sensibilidad_a.yaml
+#   docker compose run --rm tfg python main.py ejecutar --config config/config_sensibilidad_a.yaml
+# =============================================================================
+hereda_de: "config.yaml"
+
+series:
+  extender_vida_hasta_fin_periodo: true
+
+inclusion:
+  exigir_presencia_prueba: false
+
+salidas:
+  directorio: "salidas_sensibilidad_a"

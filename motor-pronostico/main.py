@@ -339,6 +339,8 @@ def comando_ejecutar(cfg) -> int:
         decisiones={
             "devoluciones": informe_series.tratamiento_devoluciones,
             "rellenar_ceros_intermedios": cfg.series.rellenar_ceros_intermedios,
+            "extender_vida_hasta_fin_periodo":
+                cfg.series.extender_vida_hasta_fin_periodo,
         },
         conteos={
             "filas_negativas": informe_series.filas_negativas,
@@ -347,6 +349,7 @@ def comando_ejecutar(cfg) -> int:
             "combinaciones_totales": informe_series.combinaciones_totales,
             "sin_venta_positiva": informe_series.combinaciones_sin_venta_positiva,
             "meses_rellenados_con_cero": informe_series.meses_rellenados_con_cero,
+            "meses_extendidos_con_cero": informe_series.meses_extendidos_con_cero,
         },
         notas=[f"Rango del panel: {informe_series.rango[0]} .. {informe_series.rango[1]}"],
         duracion_s=time.perf_counter() - inicio,
@@ -418,8 +421,10 @@ def comando_ejecutar(cfg) -> int:
     # Los criterios se miden sobre el panel de AJUSTE: con el tratamiento de la
     # empresa, una serie apagada por el confinamiento no pierde su lugar en la
     # muestra por ceros exógenos.
+    # El estado al origen (sólo con inclusion.estado_al_origen: activa) se
+    # mide sobre la actividad OBSERVADA, como clasificar_estados.
     cohorte_ajustada, informe_cohorte = particion.aplicar_criterios_inclusion(
-        panel_ajuste_largo, cfg, corte
+        panel_ajuste_largo, cfg, corte, panel_estado=panel_largo
     )
     for linea in informe_cohorte.lineas():
         print("      " + linea)
@@ -452,7 +457,8 @@ def comando_ejecutar(cfg) -> int:
     )
 
     sensibilidad = particion.sensibilidad_umbrales(
-        panel_ajuste_largo, corte, valor_por_serie
+        panel_ajuste_largo, corte, valor_por_serie,
+        cfg=cfg, panel_estado=panel_largo,
     )
     reporte.tabla("sensibilidad_umbrales.csv", sensibilidad)
 
@@ -465,6 +471,7 @@ def comando_ejecutar(cfg) -> int:
             "fin_validacion": str(cfg.particion.fin_validacion),
             "fin_prueba": str(cfg.periodo.fin),
             "umbrales_inclusion": informe_cohorte.umbrales,
+            "interruptores_cohorte": informe_cohorte.interruptores,
         },
         conteos={
             "cascada": informe_cohorte.flujo,
@@ -475,6 +482,12 @@ def comando_ejecutar(cfg) -> int:
                     "sensibilidad_umbrales.csv"],
         notas=[
             "Los criterios se miden SOLO sobre el bloque de entrenamiento.",
+            "Interruptores de cohorte: "
+            + ", ".join(f"{clave} = {valor}"
+                        for clave, valor in informe_cohorte.interruptores.items())
+            + (" (los de la corrida publicada)."
+               if particion.cohorte_por_defecto(cfg)
+               else " (corrida de sensibilidad de la cohorte)."),
             "fuera_de_muestra.csv clasifica TODAS las series (estado de "
             "actividad al cierre de entrenamiento, molde del sistema en "
             "producción) con el criterio que las excluyó y su peso valorizado: "
@@ -1061,8 +1074,14 @@ def comando_ejecutar(cfg) -> int:
             salida={"features_explicadas": int(len(tabla_contribuciones))},
             decisiones={
                 "metodo": "TreeSHAP nativo de LightGBM (pred_contrib=True): "
-                          "descomposición aditiva EXACTA de cada predicción, "
-                          "sin dependencias nuevas",
+                          "descomposición aditiva EXACTA del puntaje crudo de "
+                          "cada predicción, sin dependencias nuevas",
+                "escala": "cruda del modelo; con objective="
+                          f"{cfg.modelos['lightgbm'].get('objective')} "
+                          "(tweedie: enlace logarítmico) valor base + suma de "
+                          "contribuciones = log(predicción); cada contribución "
+                          "c es un factor multiplicativo exp(c) sobre la "
+                          "predicción, no unidades",
                 "bloque_explicado": "prueba",
                 "umbral_pico": "participación mensual > "
                                f"{explicacion.UMBRAL_FACTOR_PICO}/12 de la "
