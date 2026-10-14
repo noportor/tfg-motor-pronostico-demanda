@@ -1,8 +1,6 @@
 """Motor de pronóstico de demanda — INNOVA S.A.
 
-Análisis cuantitativo del Trabajo Final de Grado «Diseño de un motor de
-pronóstico de demanda basado en series temporales para mejorar la precisión de
-la planificación de la demanda en INNOVA S.A.» (UAGRM School of Engineering,
+Análisis cuantitativo del Trabajo Final de Grado «Motor híbrido de pronóstico de demanda con machine learning: diseño para INNOVA S.A., gestión 2026» (UAGRM School of Engineering,
 Maestría en Ciencia de Datos e Inteligencia Artificial).
 
 Los resultados que produce este código se publican en un documento académico que
