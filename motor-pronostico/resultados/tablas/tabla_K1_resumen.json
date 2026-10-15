@@ -2,12 +2,12 @@
   "corridas": {
     "original": {
       "carpeta": "salidas",
-      "generado_en": "2026-10-14T23:33:28+00:00",
-      "commit": "10bed4bc6db7c17b2354bb28ca497eb459a6c238",
+      "generado_en": "2026-10-15T03:56:04+00:00",
+      "commit": "14e89a6aa2cbe1774771a8b83cbd6748094f4bf7",
       "arbol_limpio": true,
       "archivos_modificados": [],
-      "configuracion_sha256": "64e93f973d877845729c4670bb0382d881e53ae0711f0cda05c34b3bb0711afc",
-      "duracion_segundos": 2278.9,
+      "configuracion_sha256": "02c440f6eecdf763233d96cf7fe3ceb9229e3279c46a5d64ac9107090a6524e5",
+      "duracion_segundos": 2135.6,
       "control_d_max_pp": 4.74539803008156e-08,
       "flujo": [
         {
@@ -49,12 +49,12 @@
     },
     "A: cohorte al origen": {
       "carpeta": "salidas_sensibilidad_a",
-      "generado_en": "2026-10-15T00:16:13+00:00",
-      "commit": "10bed4bc6db7c17b2354bb28ca497eb459a6c238",
+      "generado_en": "2026-10-15T04:38:14+00:00",
+      "commit": "14e89a6aa2cbe1774771a8b83cbd6748094f4bf7",
       "arbol_limpio": true,
       "archivos_modificados": [],
       "configuracion_sha256": "a8896b535b89adc2fd75934f4c886db12e40cb03255a21f0a82f8ccc88b601e6",
-      "duracion_segundos": 2553.1,
+      "duracion_segundos": 2517.5,
       "control_d_max_pp": 5.678585068835673e-08,
       "flujo": [
         {
@@ -96,12 +96,12 @@
     },
     "B: cohorte al origen, sólo activas": {
       "carpeta": "salidas_sensibilidad_b",
-      "generado_en": "2026-10-15T01:56:55+00:00",
-      "commit": "fa64e3c4865761cdffaa2edc93d00310dad47fc5",
+      "generado_en": "2026-10-15T05:17:13+00:00",
+      "commit": "14e89a6aa2cbe1774771a8b83cbd6748094f4bf7",
       "arbol_limpio": true,
       "archivos_modificados": [],
       "configuracion_sha256": "4d592dacfbec9758db01c0932a63eaab8a695e325b9146b6259c900e86cdbe9e",
-      "duracion_segundos": 2150.4,
+      "duracion_segundos": 2329.7,
       "control_d_max_pp": 5.2327848720779e-08,
       "flujo": [
         {
