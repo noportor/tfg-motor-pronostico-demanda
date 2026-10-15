@@ -1,6 +1,6 @@
 """Método de Croston para demanda intermitente.
 
-Se incorpora porque una parte apreciable del portafolio de INNOVA es demanda
+Se incorpora porque una parte apreciable del portafolio de NOVAPACK es demanda
 esporádica —productos de baja rotación con muchos meses en cero— y el informe de
 inspección cuantifica exactamente cuántas series caen en ese régimen. Sobre ese
 tipo de series el promedio móvil y el Naïve tienen un problema estructural bien

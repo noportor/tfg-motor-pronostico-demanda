@@ -1,4 +1,4 @@
-"""Promedio móvil — el método tradicional de INNOVA.
+"""Promedio móvil — el método tradicional de NOVAPACK.
 
 §10 de los requerimientos prohíbe expresamente sustituir el promedio móvil por
 una versión más débil que la que usa la empresa para agrandar la mejora. Por eso

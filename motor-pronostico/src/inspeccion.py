@@ -56,7 +56,7 @@ def inspeccionar(
     L = informe.lineas
     D = informe.datos
 
-    L += _titulo("Informe de inspección de datos — INNOVA S.A.")
+    L += _titulo("Informe de inspección de datos — NOVAPACK S.A.")
 
     # -- 1. Cobertura temporal ----------------------------------------------
     periodo = df["fecha"].dt.to_period("M")

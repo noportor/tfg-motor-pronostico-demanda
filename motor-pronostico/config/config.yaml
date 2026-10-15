@@ -1,5 +1,5 @@
 # =============================================================================
-# Motor de pronóstico de demanda — INNOVA S.A.
+# Motor de pronóstico de demanda — NOVAPACK S.A.
 # Configuración única del experimento. Todo lo que sigue se fija ANTES de mirar
 # resultados (§10 del REQUERIMIENTOS: «Ajustar parámetros mirando el conjunto de
 # prueba» está prohibido).
@@ -14,7 +14,7 @@ datos:
   # Ruta del archivo crudo. Se resuelve relativa a la raíz del repositorio.
   # datos/crudo/ está en .gitignore desde el primer commit (Anexo B — acuerdo de
   # confidencialidad).
-  archivo: "datos/crudo/ventas_innova.csv"
+  archivo: "datos/crudo/ventas_novapack.csv"
 
   # Mapeo de nombres reales de columna -> nombres canónicos del programa.
   # RF-1: los nombres NO se asumen, se declaran.
@@ -33,7 +33,7 @@ datos:
   codificacion: "utf-8"
 
 # -----------------------------------------------------------------------------
-# 2. Ventana temporal — gestiones fiscales de INNOVA (abril → marzo)
+# 2. Ventana temporal — gestiones fiscales de NOVAPACK (abril → marzo)
 # -----------------------------------------------------------------------------
 # La empresa cierra en marzo. Una gestión se nombra por el año en que CIERRA:
 # la gestión 2018 va de abril-2017 a marzo-2018.
@@ -165,7 +165,7 @@ inclusion:
 # -----------------------------------------------------------------------------
 # 6. Modelos
 # -----------------------------------------------------------------------------
-# Los seis primeros son los métodos que INNOVA usa hoy (confirmado con
+# Los seis primeros son los métodos que NOVAPACK usa hoy (confirmado con
 # Planificación). Los tres siguientes son los clásicos estadísticos incorporados
 # por recomendación de la dirección del trabajo. LightGBM es el brazo de
 # aprendizaje automático y el motor es la propuesta.

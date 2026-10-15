@@ -1,6 +1,6 @@
 # Trabajo Final de Grado — Nicolás Oporto Rojas
 
-**«Motor híbrido de pronóstico de demanda con *machine learning*: diseño para INNOVA S.A., gestión 2026»**
+**«Diseño de un motor de pronóstico de demanda basado en series temporales para mejorar la precisión de la planificación de la demanda en NOVAPACK S.A. para la gestión 2026»**
 
 Maestría en Ciencia de Datos e Inteligencia Artificial
 UAGRM School of Engineering — Universidad Autónoma «Gabriel René Moreno»

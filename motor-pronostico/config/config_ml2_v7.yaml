@@ -25,7 +25,7 @@
 # =============================================================================
 
 datos:
-  archivo: "datos/crudo/ventas_innova.csv"
+  archivo: "datos/crudo/ventas_novapack.csv"
   columnas:
     fecha: "fecha"
     sku: "sku"

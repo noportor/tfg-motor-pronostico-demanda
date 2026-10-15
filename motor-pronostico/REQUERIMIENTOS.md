@@ -1,4 +1,4 @@
-# Motor de pronóstico de demanda — INNOVA S.A.
+# Motor de pronóstico de demanda — NOVAPACK S.A.
 
 Especificación del proyecto para desarrollo asistido con Claude Code.
 
@@ -17,7 +17,7 @@ Este repositorio implementa el análisis cuantitativo de un Trabajo Final de Gra
 de maestría (UAGRM School of Engineering, Ciencia de Datos e Inteligencia
 Artificial). El objetivo de la tesis es diseñar un **motor de pronóstico de
 demanda** que seleccione automáticamente el modelo más preciso para cada
-combinación SKU–canal–regional de la empresa INNOVA S.A.
+combinación SKU–canal–regional de la empresa NOVAPACK S.A.
 
 La hipótesis a contrastar es que ese motor **mejora significativamente** la
 precisión del pronóstico frente a los métodos tradicionales que la empresa usa
@@ -347,7 +347,7 @@ Tres desviaciones respecto del boceto inicial, todas deliberadas:
 - `scripts/extraer_snapshot.py` separa la extracción —que habla con la base de
   datos, una sola vez— del pipeline, que no lo hace nunca (§9).
 
-**Sobre los datos y el control de versiones.** El histórico de INNOVA está
+**Sobre los datos y el control de versiones.** El histórico de NOVAPACK está
 cubierto por un acuerdo de confidencialidad (Anexo B de la tesis). `datos/crudo/`
 va en `.gitignore` desde el primer commit.
 

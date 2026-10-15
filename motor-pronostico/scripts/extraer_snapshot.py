@@ -1,4 +1,4 @@
-"""Extracción y congelado del histórico de ventas de INNOVA S.A.
+"""Extracción y congelado del histórico de ventas de NOVAPACK S.A.
 
 Este script se ejecuta UNA sola vez, fuera del pipeline. Su producto es un
 archivo CSV inmutable en ``datos/crudo/`` acompañado de su SHA-256. A partir de

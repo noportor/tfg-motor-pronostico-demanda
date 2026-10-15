@@ -12,7 +12,7 @@ Decisiones declaradas
 - **Cero-shot estricto.** ``ajustar()`` solo carga los pesos publicados: no hay
   fine-tuning, y el bloque de validación NO se usa (ni siquiera para parar
   temprano — no hay nada que parar). Es el único brazo cuyos parámetros no
-  vieron jamás datos de INNOVA.
+  vieron jamás datos de NOVAPACK.
 - **Los datos no salen de la máquina.** Los pesos se descargan una vez desde el
   repositorio público y la inferencia corre local (GPU si hay): ninguna serie
   viaja a una API externa (Anexo B).

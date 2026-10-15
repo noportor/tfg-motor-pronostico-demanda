@@ -4,7 +4,7 @@ Por qué existe
 --------------
 El protocolo principal del experimento evalúa a UN paso: cada mes se pronostica
 con el valor real del mes anterior. Es la comparación justa entre brazos y es el
-caso h=1 de este módulo. Pero el objetivo operativo del pronóstico en INNOVA
+caso h=1 de este módulo. Pero el objetivo operativo del pronóstico en NOVAPACK
 es el horizonte de PLANIFICACIÓN, que supera el año: las decisiones de compra
 y producción se toman sobre esos meses lejanos.
 

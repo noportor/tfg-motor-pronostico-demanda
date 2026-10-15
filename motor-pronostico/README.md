@@ -1,6 +1,6 @@
-# Motor de pronóstico de demanda — INNOVA S.A.
+# Motor de pronóstico de demanda — NOVAPACK S.A.
 
-Artefacto de software del Trabajo Final de Grado *«Motor híbrido de pronóstico de demanda con *machine learning*: diseño para INNOVA S.A., gestión 2026»* —
+Artefacto de software del Trabajo Final de Grado *«Diseño de un motor de pronóstico de demanda basado en series temporales para mejorar la precisión de la planificación de la demanda en NOVAPACK S.A. para la gestión 2026»* —
 UAGRM School of Engineering, Maestría en Ciencia de Datos e Inteligencia
 Artificial.
 
@@ -124,7 +124,7 @@ docker compose up -d visor        # -> http://localhost:8501
 
 ## Confidencialidad
 
-El histórico de ventas de INNOVA S.A. está cubierto por un acuerdo de
+El histórico de ventas de NOVAPACK S.A. está cubierto por un acuerdo de
 confidencialidad (Anexo B del documento), y con él el esquema interno del
 sistema de origen. Por eso **los datos no están en este repositorio** y el
 pipeline se ejecuta sobre un snapshot local que no se versiona. Tres barreras

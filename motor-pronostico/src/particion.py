@@ -12,7 +12,7 @@ La selección por serie que hace el motor solo puede mirar validación. Si esa
 decisión se tomara con datos de prueba el resultado reportado estaría
 contaminado y la comparación sería inválida.
 
-Los cortes caen en frontera de **gestión fiscal** (INNOVA cierra en marzo), no
+Los cortes caen en frontera de **gestión fiscal** (NOVAPACK cierra en marzo), no
 en frontera de año calendario, para que ningún bloque parta una campaña escolar
 por la mitad y cada bloque contenga un número entero de ciclos comerciales.
 
