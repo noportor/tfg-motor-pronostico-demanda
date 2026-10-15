@@ -370,11 +370,31 @@ def costo_por_serie(salidas: Path, mensual: pd.DataFrame) -> pd.Series:
     return costo[costo > 0]
 
 
-def construir(salidas: Path, replicas: int, semilla: int) -> tuple[pd.DataFrame, dict]:
+def construir(
+    salidas: Path,
+    replicas: int,
+    semilla: int,
+    comparaciones: list[tuple[str, str]] | None = None,
+    publicadas: dict[tuple[str, str], tuple[float, float]] | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    """Remuestreos de una corrida publicada.
+
+    Por omisión, las cinco comparaciones de la corrida principal y su control de
+    reproducción (Tabla H3). ``comparaciones`` y ``publicadas`` permiten aplicar
+    el mismo método a otra corrida con otras comparaciones (Tabla H4,
+    ``scripts/incertidumbre_extension.py``): ``publicadas`` lleva, para cada
+    comparación que la corrida imprime en ``pruebas_estadisticas.txt``, el par
+    (r, rango biserial) a cuatro decimales, y el script se detiene si no se
+    reproduce.
+    """
+    if comparaciones is None:
+        comparaciones = COMPARACIONES
+    if publicadas is None:
+        publicadas = PUBLICADAS_EN_TXT
     manifiesto = verificar_insumos(salidas)
 
     matriz = pd.read_csv(salidas / "matriz_contraste.csv").set_index("serie").dropna()
-    modelos = sorted({m for par in COMPARACIONES for m in par})
+    modelos = sorted({m for par in comparaciones for m in par})
     faltan = [m for m in modelos if m not in matriz.columns]
     if faltan:
         raise SystemExit(f"La matriz publicada no tiene los modelos {faltan}")
@@ -384,16 +404,16 @@ def construir(salidas: Path, replicas: int, semilla: int) -> tuple[pd.DataFrame,
 
     # --- Valor p y tamaño del efecto publicados (misma función de la corrida)
     publicados = {}
-    for prop, ref in COMPARACIONES:
+    for prop, ref in comparaciones:
         w = wilcoxon_pareado(matriz[prop].rename(prop), matriz[ref].rename(ref))
         publicados[(prop, ref)] = w
-        if (prop, ref) in PUBLICADAS_EN_TXT:
-            r_txt, rb_txt = PUBLICADAS_EN_TXT[(prop, ref)]
+        if (prop, ref) in publicadas:
+            r_txt, rb_txt = publicadas[(prop, ref)]
             if round(w.r, 4) != r_txt or round(w.rango_biserial, 4) != rb_txt:
                 raise SystemExit(f"No se reproduce el Wilcoxon publicado de {prop} frente a {ref}")
 
     diferencias = {
-        (p, r): (matriz[p] - matriz[r]).to_numpy(dtype=float) for p, r in COMPARACIONES
+        (p, r): (matriz[p] - matriz[r]).to_numpy(dtype=float) for p, r in comparaciones
     }
 
     # --- Componentes valorizados por serie (D del portafolio) ---------------
@@ -466,7 +486,7 @@ def construir(salidas: Path, replicas: int, semilla: int) -> tuple[pd.DataFrame,
     # --- Remuestreos -----------------------------------------------------
     filas = bootstrap_por_sku(diferencias, componentes, codigos, replicas, semilla)
     estimaciones = {(f.propuesto, f.referencia, f.magnitud): f.estimacion for f in filas}
-    filas += bootstrap_por_bloques(paneles, COMPARACIONES, estimaciones, replicas, semilla)
+    filas += bootstrap_por_bloques(paneles, comparaciones, estimaciones, replicas, semilla)
 
     registros = []
     for f in filas:
@@ -491,7 +511,7 @@ def construir(salidas: Path, replicas: int, semilla: int) -> tuple[pd.DataFrame,
     tabla = pd.DataFrame(registros)
     orden_m = {k: i for i, k in enumerate(MAGNITUDES)}
     orden_r = {k: i for i, k in enumerate(REMUESTREOS)}
-    orden_c = {f"{p} - {r}": i for i, (p, r) in enumerate(COMPARACIONES)}
+    orden_c = {f"{p} - {r}": i for i, (p, r) in enumerate(comparaciones)}
     tabla = tabla.sort_values(
         by=["magnitud", "remuestreo", "comparacion"],
         key=lambda s: s.map({**orden_m, **orden_r, **orden_c}),
