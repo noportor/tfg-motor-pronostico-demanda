@@ -10,7 +10,7 @@ y producción se toman sobre esos meses lejanos.
 
 A un paso, un modelo que proyecta línea recta (Naïve, promedio móvil, suavizado
 exponencial simple) nunca queda expuesto: se re-engancha a la realidad cada mes.
-A dieciocho, la raya horizontal ignora la campaña escolar. Ese contraste es
+A varios meses, la raya horizontal ignora la campaña escolar. Ese contraste es
 invisible para el protocolo a un paso y es exactamente lo que este módulo mide.
 
 La RN-4 lo anticipa: «si en algún momento se agrega evaluación multihorizonte,
