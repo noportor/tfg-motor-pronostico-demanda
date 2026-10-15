@@ -1472,7 +1472,7 @@ def comando_ejecutar(cfg) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Motor de pronóstico de demanda — INNOVA S.A.",
+        description="Motor de pronóstico de demanda — NOVAPACK S.A.",
     )
     parser.add_argument(
         "comando", choices=["inspeccionar", "ejecutar", "figuras"],
@@ -1494,7 +1494,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.anular:
         print(f"Anulaciones   : {', '.join(args.anular)}")
     print("=" * 78)
-    print("MOTOR DE PRONÓSTICO DE DEMANDA — INNOVA S.A.")
+    print("MOTOR DE PRONÓSTICO DE DEMANDA — NOVAPACK S.A.")
     print("=" * 78)
     print(f"Configuración : {cfg.ruta_config}")
     print(f"Datos         : {cfg.ruta_datos}")

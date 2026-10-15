@@ -1,7 +1,7 @@
 """Modelos Naïve.
 
 ``naive_m1`` es la línea base estándar de la literatura de pronóstico (Hyndman &
-Athanasopoulos, 2021) y es además el método que INNOVA aplica de hecho en la
+Athanasopoulos, 2021) y es además el método que NOVAPACK aplica de hecho en la
 mayor parte del portafolio, según el relevamiento con Planificación.
 
 ``naive_m1_gf`` es la variante que la empresa usa cuando quiere corregir por

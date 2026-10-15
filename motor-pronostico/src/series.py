@@ -3,7 +3,7 @@
 Tres decisiones metodológicas viven aquí, y las tres se declaran en la memoria:
 
 1. **Agregación mensual.** El grano de análisis es la combinación
-   SKU–canal–regional, que es la unidad sobre la que INNOVA planifica.
+   SKU–canal–regional, que es la unidad sobre la que NOVAPACK planifica.
 
 2. **Relleno de ceros acotado a la vida de la serie.** Los meses sin registro se
    completan con cero SOLO entre la primera y la última venta. No se extrapola

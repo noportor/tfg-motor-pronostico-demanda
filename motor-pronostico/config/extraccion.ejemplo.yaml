@@ -7,7 +7,7 @@
 #
 # Por qué vive fuera del repositorio
 # ----------------------------------
-# El código de esta tesis se publica; el esquema interno de INNOVA S.A. no.
+# El código de esta tesis se publica; el esquema interno de NOVAPACK S.A. no.
 # Los nombres de esquema, tabla y columnas del sistema de origen son
 # información de la empresa cubierta por el acuerdo de confidencialidad
 # (Anexo B), igual que los datos. Tenerlos hardcodeados en `extraer_snapshot.py`

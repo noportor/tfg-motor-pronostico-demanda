@@ -47,7 +47,7 @@ def mes_a_periodo(texto: str) -> pd.Period:
 def gestion_de(periodo: pd.Period, mes_inicio: int) -> int:
     """Gestión fiscal a la que pertenece un mes.
 
-    INNOVA cierra en marzo y una gestión se nombra por el año en que CIERRA:
+    NOVAPACK cierra en marzo y una gestión se nombra por el año en que CIERRA:
     la gestión 2018 va de abril-2017 a marzo-2018. Con ``mes_inicio = 4``:
 
         2017-04 .. 2017-12  -> 2018

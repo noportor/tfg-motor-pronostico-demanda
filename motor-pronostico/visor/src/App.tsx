@@ -67,7 +67,7 @@ function Shell() {
       >
         <Toolbar variant="dense" sx={{ gap: 2 }}>
           <Typography variant="subtitle1" fontWeight={700} sx={{ flexShrink: 0 }}>
-            Motor de pronóstico — INNOVA
+            Motor de pronóstico — NOVAPACK
           </Typography>
           <Box sx={{ flexGrow: 1 }} />
           {activa.anulaciones.length > 0 && (
