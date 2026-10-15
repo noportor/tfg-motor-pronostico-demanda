@@ -34,4 +34,4 @@ Remuestreo: B = 2.000 réplicas, semilla 20260408, intervalos percentiles al 95 
 
 Controles: la D reconstruida reproduce la Tabla 8 valorizada con una diferencia máxima de 3,9 × 10⁻⁸ puntos; el panel mensual reproduce la métrica por serie con una diferencia máxima de 9,6 × 10⁻⁵ unidades, la D de cada modelo con 6,5 × 10⁻⁷ puntos y el WMAPE y el sesgo valorizados de cada mes de error_por_mes.csv (lightgbm, ma_12, motor, naive_m1) con 8,1 × 10⁻⁶ puntos (redondeo del archivo mensual). La estimación es la de la muestra completa, sin remuestrear, en ambas variantes.
 
-Corrida: 2026-10-15T03:56:04+00:00 (commit 14e89a6aa2cbe1774771a8b83cbd6748094f4bf7).
+Corrida: 2026-10-15T15:54:41+00:00 (commit 157ba1d04ba97e03e2da02be579e8ab51537fc60).
