@@ -509,8 +509,10 @@ def figura_casos(
         if desde is not None:
             real = real.loc[real.index >= desde]
         meses = real.index
+        # La serie observada es la venta registrada, no la demanda real (que
+        # no se observa cuando hay quiebres): el rótulo lo dice así.
         eje.plot([m.ordinal for m in meses], real.to_numpy(), color="0.78",
-                 linewidth=1.9, label="real")
+                 linewidth=1.9, label="Ventas observadas")
 
         for nombre, panel_pred in predicciones.items():
             pred = panel_pred[serie].loc[
@@ -528,7 +530,7 @@ def figura_casos(
         eje.set_xlim(meses[0].ordinal - 0.5, meses[-1].ordinal + 0.5)
         eje.set_title(f"({chr(97 + indice)}) {etiqueta}", fontsize=8.5)
         if indice % 2 == 0:
-            eje.set_ylabel("Demanda (unidades)", fontsize=8)
+            eje.set_ylabel("Unidades", fontsize=8)
         marcas = [m for m in meses if m.month == 4][::2]
         eje.set_xticks([m.ordinal for m in marcas])
         eje.set_xticklabels([str(m.year) for m in marcas], fontsize=7)
