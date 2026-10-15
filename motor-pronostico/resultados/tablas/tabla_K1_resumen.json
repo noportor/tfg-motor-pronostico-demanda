@@ -1,0 +1,304 @@
+{
+  "corridas": {
+    "original": {
+      "carpeta": "salidas",
+      "generado_en": "2026-10-14T23:33:28+00:00",
+      "commit": "10bed4bc6db7c17b2354bb28ca497eb459a6c238",
+      "arbol_limpio": true,
+      "archivos_modificados": [],
+      "configuracion_sha256": "64e93f973d877845729c4670bb0382d881e53ae0711f0cda05c34b3bb0711afc",
+      "duracion_segundos": 2278.9,
+      "control_d_max_pp": 4.74539803008156e-08,
+      "flujo": [
+        {
+          "paso": "0. series construidas",
+          "series": 4406,
+          "excluidas": 0
+        },
+        {
+          "paso": "1. con historia en entrenamiento",
+          "series": 3937,
+          "excluidas": 469
+        },
+        {
+          "paso": "2. historial >= 36 meses",
+          "series": 2774,
+          "excluidas": 1163
+        },
+        {
+          "paso": "3. proporción de meses en cero <= 0.70",
+          "series": 1978,
+          "excluidas": 796
+        },
+        {
+          "paso": "4. volumen acumulado >= 50 unidades",
+          "series": 1963,
+          "excluidas": 15
+        },
+        {
+          "paso": "5. presente en validación",
+          "series": 1812,
+          "excluidas": 151
+        },
+        {
+          "paso": "6. presente en prueba",
+          "series": 1668,
+          "excluidas": 144
+        }
+      ]
+    },
+    "A: cohorte al origen": {
+      "carpeta": "salidas_sensibilidad_a",
+      "generado_en": "2026-10-15T00:16:13+00:00",
+      "commit": "10bed4bc6db7c17b2354bb28ca497eb459a6c238",
+      "arbol_limpio": true,
+      "archivos_modificados": [],
+      "configuracion_sha256": "a8896b535b89adc2fd75934f4c886db12e40cb03255a21f0a82f8ccc88b601e6",
+      "duracion_segundos": 2553.1,
+      "control_d_max_pp": 5.678585068835673e-08,
+      "flujo": [
+        {
+          "paso": "0. series construidas",
+          "series": 4406,
+          "excluidas": 0
+        },
+        {
+          "paso": "1. con historia en entrenamiento",
+          "series": 3937,
+          "excluidas": 469
+        },
+        {
+          "paso": "2. historial >= 36 meses",
+          "series": 3291,
+          "excluidas": 646
+        },
+        {
+          "paso": "3. proporción de meses en cero <= 0.70",
+          "series": 1980,
+          "excluidas": 1311
+        },
+        {
+          "paso": "4. volumen acumulado >= 50 unidades",
+          "series": 1964,
+          "excluidas": 16
+        },
+        {
+          "paso": "5. presente en validación (vida observada)",
+          "series": 1812,
+          "excluidas": 152
+        },
+        {
+          "paso": "6. presente en prueba: no se aplica (inclusion.exigir_presencia_prueba = false)",
+          "series": 1812,
+          "excluidas": 0
+        }
+      ]
+    },
+    "B: cohorte al origen, sólo activas": {
+      "carpeta": "salidas_sensibilidad_b",
+      "generado_en": "2026-10-15T00:54:39+00:00",
+      "commit": "10bed4bc6db7c17b2354bb28ca497eb459a6c238",
+      "arbol_limpio": false,
+      "archivos_modificados": [
+        "motor-pronostico/scripts/sensibilidad_cohorte.py",
+        "motor-pronostico/tests/test_sensibilidad_cohorte.py"
+      ],
+      "configuracion_sha256": "4d592dacfbec9758db01c0932a63eaab8a695e325b9146b6259c900e86cdbe9e",
+      "duracion_segundos": 2295.1,
+      "control_d_max_pp": 5.2327848720779e-08,
+      "flujo": [
+        {
+          "paso": "0. series construidas",
+          "series": 4406,
+          "excluidas": 0
+        },
+        {
+          "paso": "1. con historia en entrenamiento",
+          "series": 3937,
+          "excluidas": 469
+        },
+        {
+          "paso": "2. historial >= 36 meses",
+          "series": 3291,
+          "excluidas": 646
+        },
+        {
+          "paso": "3. proporción de meses en cero <= 0.70",
+          "series": 1980,
+          "excluidas": 1311
+        },
+        {
+          "paso": "4. volumen acumulado >= 50 unidades",
+          "series": 1964,
+          "excluidas": 16
+        },
+        {
+          "paso": "5. presente en validación (vida observada)",
+          "series": 1812,
+          "excluidas": 152
+        },
+        {
+          "paso": "6. presente en prueba: no se aplica (inclusion.exigir_presencia_prueba = false)",
+          "series": 1812,
+          "excluidas": 0
+        },
+        {
+          "paso": "7. activa al origen (venta entre 2024-10 y 2025-03)",
+          "series": 1661,
+          "excluidas": 151
+        }
+      ]
+    }
+  },
+  "variante_a": {
+    "series_agregadas": 144,
+    "sin_venta_en_prueba": 144,
+    "meses_evaluados_cohorte_publicada_original": 18502,
+    "meses_evaluados_mismas_series_en_A": 20016,
+    "por_estado_al_origen": {
+      "activa": {
+        "series": 1661,
+        "con_venta_en_validacion": 1661,
+        "con_venta_en_prueba": 1565,
+        "en_cohorte_publicada": 1565
+      },
+      "dormida": {
+        "series": 116,
+        "con_venta_en_validacion": 116,
+        "con_venta_en_prueba": 68,
+        "en_cohorte_publicada": 68
+      },
+      "descontinuada": {
+        "series": 35,
+        "con_venta_en_validacion": 0,
+        "con_venta_en_prueba": 35,
+        "en_cohorte_publicada": 35
+      }
+    },
+    "meses_de_la_original": {
+      "meses_serie": 18502,
+      "modelos_con_pronostico_identico": [
+        "croston",
+        "exp_smooth_opt",
+        "holt_winters",
+        "ma_12",
+        "ma_12_gf",
+        "ma_2",
+        "ma_2_gf",
+        "naive_m1",
+        "naive_m1_gf"
+      ],
+      "D_variante_en_meses_de_la_original": {
+        "croston": 86.12775272528617,
+        "exp_smooth_opt": 79.49623954419974,
+        "holt_winters": 83.50281506265273,
+        "lightgbm": 77.107681970782,
+        "ma_12": 85.35983985236595,
+        "ma_12_gf": 99.9650016959695,
+        "ma_2": 84.93577338264352,
+        "ma_2_gf": 98.03919049563976,
+        "motor": 75.06229983161566,
+        "naive_m1": 85.5688602015227,
+        "naive_m1_gf": 96.41833287075625
+      }
+    }
+  },
+  "cambios_de_modelo_elegido_en_la_cohorte_publicada": {
+    "A: cohorte al origen": {
+      "series_comunes": 1668,
+      "cambian": 108
+    },
+    "B: cohorte al origen, sólo activas": {
+      "series_comunes": 1565,
+      "cambian": 147
+    }
+  },
+  "multihorizonte_D_global_pct": {
+    "original": {
+      "croston": 93.47338672096492,
+      "exp_smooth_opt": 103.83093505715993,
+      "holt_winters": 81.18975702400644,
+      "lightgbm": 71.91469677783807,
+      "ma_12": 94.55563740704541,
+      "ma_12_gf": 113.17246102694968,
+      "ma_2": 116.57392852584223,
+      "ma_2_gf": 134.32651904237497,
+      "motor": 91.15419335053515,
+      "naive_m1": 120.53160304884878,
+      "naive_m1_gf": 157.9725643628051
+    },
+    "A: cohorte al origen": {
+      "croston": 93.47338672096494,
+      "exp_smooth_opt": 103.83093505715993,
+      "holt_winters": 96.19539805481918,
+      "lightgbm": 72.91214859834098,
+      "ma_12": 94.55563740704541,
+      "ma_12_gf": 113.17246102694966,
+      "ma_2": 116.57392852584223,
+      "ma_2_gf": 134.32651904237497,
+      "motor": 92.10321462749675,
+      "naive_m1": 120.53160304884878,
+      "naive_m1_gf": 173.915485346863
+    },
+    "B: cohorte al origen, sólo activas": {
+      "croston": 93.09285945595495,
+      "exp_smooth_opt": 103.0132146896961,
+      "holt_winters": 96.15716743991376,
+      "lightgbm": 72.14078142041525,
+      "ma_12": 93.33141718773855,
+      "ma_12_gf": 111.9929209086526,
+      "ma_2": 115.97903294284558,
+      "ma_2_gf": 133.6441431670008,
+      "motor": 92.09789418950652,
+      "naive_m1": 120.00442633285579,
+      "naive_m1_gf": 174.7027879945802
+    }
+  },
+  "quiebres": {
+    "A, sin venta en prueba": {
+      "series": 144,
+      "con_medicion_en_prueba": 141,
+      "con_algun_quiebre_en_prueba": 131,
+      "con_quiebre_en_todos_los_meses_medidos": 117,
+      "meses_con_quiebre_mediana": 12.0
+    },
+    "A, con venta en prueba": {
+      "series": 1668,
+      "con_medicion_en_prueba": 1507,
+      "con_algun_quiebre_en_prueba": 1097,
+      "con_quiebre_en_todos_los_meses_medidos": 59,
+      "meses_con_quiebre_mediana": 3.0
+    }
+  },
+  "quiebres_sello": "verificado contra datos.auxiliares de la corrida publicada",
+  "variante_b_disponible": true,
+  "variante_b": {
+    "meses_de_la_original_en_series_comunes": {
+      "meses_serie": 17494,
+      "modelos_con_pronostico_identico": [
+        "croston",
+        "exp_smooth_opt",
+        "holt_winters",
+        "ma_12",
+        "ma_12_gf",
+        "ma_2",
+        "ma_2_gf",
+        "naive_m1",
+        "naive_m1_gf"
+      ],
+      "D_variante_en_meses_de_la_original": {
+        "croston": 84.92414445315872,
+        "exp_smooth_opt": 78.78312540132613,
+        "holt_winters": 83.5379632163853,
+        "lightgbm": 75.57530985041308,
+        "ma_12": 84.27439298878969,
+        "ma_12_gf": 98.84685790419363,
+        "ma_2": 84.35524375648924,
+        "ma_2_gf": 97.3209882729056,
+        "motor": 74.53847219133473,
+        "naive_m1": 85.15236328161018,
+        "naive_m1_gf": 95.85344275383628
+      }
+    }
+  }
+}
