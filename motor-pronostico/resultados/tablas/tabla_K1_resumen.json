@@ -96,15 +96,12 @@
     },
     "B: cohorte al origen, sólo activas": {
       "carpeta": "salidas_sensibilidad_b",
-      "generado_en": "2026-10-15T00:54:39+00:00",
-      "commit": "10bed4bc6db7c17b2354bb28ca497eb459a6c238",
-      "arbol_limpio": false,
-      "archivos_modificados": [
-        "motor-pronostico/scripts/sensibilidad_cohorte.py",
-        "motor-pronostico/tests/test_sensibilidad_cohorte.py"
-      ],
+      "generado_en": "2026-10-15T01:56:55+00:00",
+      "commit": "fa64e3c4865761cdffaa2edc93d00310dad47fc5",
+      "arbol_limpio": true,
+      "archivos_modificados": [],
       "configuracion_sha256": "4d592dacfbec9758db01c0932a63eaab8a695e325b9146b6259c900e86cdbe9e",
-      "duracion_segundos": 2295.1,
+      "duracion_segundos": 2150.4,
       "control_d_max_pp": 5.2327848720779e-08,
       "flujo": [
         {
