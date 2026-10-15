@@ -1,0 +1,4 @@
+cohorte,series,series_con_costo,cobertura_valor_entrenamiento_pct,D_motor,D_ma_12_gf,D_ma_12,D_naive_m1,D_lightgbm,motor_menos_ma_12_gf_pp,posicion_motor,modelos,modelo_de_menor_D,duracion_segundos,commit
+original,1668,1513,95.037081,75.401443,99.965002,85.359839,85.568860,77.018390,-24.563559,1,11,motor,2278.900000,10bed4bc6db7c17b2354bb28ca497eb459a6c238
+A: cohorte al origen,1812,1657,96.177316,75.062299,99.965002,85.359839,85.568860,77.107682,-24.902703,1,11,motor,2553.100000,10bed4bc6db7c17b2354bb28ca497eb459a6c238
+"B: cohorte al origen, sólo activas",1661,1506,91.661281,74.538472,98.846859,84.274392,85.152363,75.575309,-24.308387,1,11,motor,2295.100000,10bed4bc6db7c17b2354bb28ca497eb459a6c238
