@@ -206,10 +206,10 @@ features:
   calendario:
     inicio_clases_mes: 2
     temporadas:
-      Categoría K: [10, 11, 12]
-      Categoría D: [12, 1, 2]
+      "Categoría K": [10, 11, 12]
+      "Categoría D": [12, 1, 2]
       "Categoría E": [12, 1, 2]
-      Categoría J: [12, 1]
+      "Categoría J": [12, 1]
 
 multihorizonte:
   activo: true

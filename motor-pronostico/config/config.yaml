@@ -60,8 +60,10 @@ periodo:
 #                 Categoría D (89 % nov–feb; 39 % del año en su mes pico)
 #
 # Cobertura: 684 SKUs, 4.406 series, 72,4 % del valor del negocio.
-# Los nombres de categoría son términos genéricos del rubro papelero: no
-# identifican a la empresa y se declaran tal cual.
+# Las categorías se declaran por su seudónimo (Categoría A … L): la captura
+# trae el nombre real y src/carga.py lo traduce al cargar con una tabla local,
+# datos/crudo/mapeo_categoria.csv, fuera del repositorio como el mapeo de SKU
+# (plantilla: config/mapeo_categoria.ejemplo.csv).
 #
 # ABLACIÓN (portafolio completo): --anular poblacion.categorias=[]
 # Las corridas previas sobre el portafolio completo se conservan como evidencia

@@ -75,7 +75,8 @@ def _ventas_sinteticas(ruta, n_series: int = 40, meses: int = 108,
     fechas = pd.period_range(inicio, periods=meses, freq="M").to_timestamp()
     filas = []
 
-    # Las categorías REALES de la población objetivo (config.yaml): la corrida
+    # Las categorías de la población objetivo (config.yaml, por su seudónimo,
+    # que es lo que deja src/carga.py tras la tabla local): la corrida
     # sintética pasa por el mismo filtro de población que la real. Se agrega
     # además una categoría FUERA de la población para ejercitar la exclusión.
     poblacion = ("Categoría K", "Categoría J", "Categoría I",
@@ -392,8 +393,8 @@ def test_flujo_json_cumple_el_contrato(corrida):
 
 
 def test_la_poblacion_objetivo_excluye_y_cuenta(corrida):
-    """Las series Categoría G de la fixture están fuera de la población: la etapa
-    debe excluirlas Y contarlas — nunca un filtro silencioso."""
+    """Las series de la Categoría G de la fixture están fuera de la población:
+    la etapa debe excluirlas Y contarlas — nunca un filtro silencioso."""
     flujo = json.loads(
         (corrida.ruta_salidas / "flujo.json").read_text(encoding="utf-8")
     )

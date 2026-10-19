@@ -1395,11 +1395,13 @@ def comando_ejecutar(cfg) -> int:
             return serie, f"{etiqueta}\n{serie.split('|')[0]}"
 
         # Etiquetas cortas: los rótulos largos desbordaban el ancho del panel.
+        # Las categorías van por su seudónimo (src/carga.py las traduce al
+        # cargar con la tabla local): la figura se publica.
         casos = [caso for caso in (
             _mayor(lambda s: categoria_serie.get(s) == "Categoría D",
-                   "Estacional de campaña (Categoría D)"),
+                   "Estacional de campaña (categoría D)"),
             _mayor(lambda s: categoria_serie.get(s) == "Categoría I",
-                   "Recurrente (Categoría I)"),
+                   "Recurrente (categoría I)"),
             _mayor(lambda s: regimen_por_serie.get(s)
                    in ("intermitente", "lumpy"),
                    "Esporádica (intermitente/lumpy)"),
