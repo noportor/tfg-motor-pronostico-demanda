@@ -8,7 +8,7 @@
 # La V5 ataca la corona que falta con dos palancas independientes:
 #
 #   1. mezcla_h: pesos por candidato × HORIZONTE. La evidencia V1-V4 midió que
-#      el menú óptimo cambia con la distancia (Chronos brilla cerca, LightGBM
+#      el conjunto óptimo cambia con la distancia (Chronos brilla cerca, LightGBM
 #      sostiene lejos, el suavizado solo sirve corto) y que los pesos POR
 #      SERIE son ruidosos (mezcla_pond < mezcla_prom con 12 observaciones por
 #      serie). El peso por horizonte se estima sobre el abanico de validación
@@ -20,7 +20,7 @@
 #      directo re-entrenado alcanza al recursivo, la debilidad de la V4 era
 #      el ajuste congelado, no el diseño directo.
 #
-# Todo lo demás queda EXACTO a la V4 (los brazos, el menú, el protocolo):
+# Todo lo demás queda EXACTO a la V4 (los brazos, el conjunto, el protocolo):
 # lo único que cambia es lo que se quiere medir. V1-V4 intactas.
 # =============================================================================
 
@@ -159,8 +159,8 @@ modelos:
     calibrar: "categoria"
 
   # --- Mezcladores ------------------------------------------------------------
-  # El MISMO menú curado de la V4 para los tres mezcladores: la comparación
-  # prom vs pond vs h aísla la REGLA de pesos, no el menú. Sin lightgbm_directo
+  # El MISMO conjunto curado de la V4 para los tres mezcladores: la comparación
+  # prom vs pond vs h aísla la REGLA de pesos, no el conjunto. Sin lightgbm_directo
   # (a un paso duplica a lightgbm y sesgaría el promedio; compite solo, como
   # especialista del horizonte). Sin brazos colapsados.
   mezclador:

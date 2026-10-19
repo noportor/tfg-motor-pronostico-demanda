@@ -1,11 +1,11 @@
 # =============================================================================
-# CORRIDA V7-BLINDAJE — el menú anti-régimen sobre el protocolo desplazado
+# CORRIDA V7-BLINDAJE — el conjunto anti-régimen sobre el protocolo desplazado
 # =============================================================================
 # La gemela de config_ml2_v7.yaml en el año de quiebre (prueba g2025): mismo
-# cambio ÚNICO respecto de la línea base del blindaje — el menú del mezclador
+# cambio ÚNICO respecto de la línea base del blindaje — el conjunto del mezclador
 # suma nhits (contrapeso de sesgo negativo) y naive_m1 (adaptividad pura).
 # Acá es donde la hipótesis se juega de verdad: en el blindaje base la mezcla
-# cayó a 90,2 porque todo el menú sobre-pronosticaba; si la diversidad de
+# cayó a 90,2 porque todo el conjunto sobre-pronosticaba; si la diversidad de
 # sesgo protege, la mezcla V7 tiene que recortar esa caída sin regalar el año
 # normal (eso lo mide la gemela). Encabezado original del blindaje debajo.
 # =============================================================================
@@ -176,8 +176,8 @@ modelos:
     lote: 256
     calibrar: "categoria"
 
-  # --- Mezcladores (V7: menú anti-régimen) ------------------------------------
-  # Menú ampliado con los brazos de diversidad de sesgo; los pesos se
+  # --- Mezcladores (V7: conjunto anti-régimen) ------------------------------------
+  # Conjunto ampliado con los brazos de diversidad de sesgo; los pesos se
   # re-estiman solos sobre g2024.
   mezclador:
     candidatos:

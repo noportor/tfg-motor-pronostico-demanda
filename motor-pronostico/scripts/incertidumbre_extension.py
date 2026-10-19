@@ -40,7 +40,7 @@ comparaciones de cada gestión, el r y el rango biserial a cuatro decimales y
 el p con el mismo formato con que los imprime ``pruebas_estadisticas.txt``.
 
 Combinación frente a la selección validada (gestión 2026): el documento
-afirma además que las mezclas del menú curado superan al motor validado de la
+afirma además que las mezclas del conjunto curado superan al motor validado de la
 corrida principal (D de 74,9 % y 74,0 % frente a 75,4 %). Esa comparación cruza
 dos corridas: las mezclas salen de ``salidas_ml2_v9/`` y el motor validado de
 ``salidas/``. El script la remuestrea con el mismo método y las mismas réplicas
@@ -104,9 +104,9 @@ GESTIONES = {
 }
 
 NOMBRES = {
-    "mezcla_prom": "promedio simple del menú curado",
-    "mezcla_pond": "menú curado ponderado por validación",
-    "mezcla_h": "menú curado ponderado por horizonte",
+    "mezcla_prom": "promedio simple del conjunto curado",
+    "mezcla_pond": "conjunto curado ponderado por validación",
+    "mezcla_h": "conjunto curado ponderado por horizonte",
     "mezcla_conmutada": "sistema conmutado",
     "motor": "brazo motor de la extensión",
     "lightgbm": "LightGBM",

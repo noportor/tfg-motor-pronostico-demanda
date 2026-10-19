@@ -1,12 +1,12 @@
 # =============================================================================
 # CORRIDA EXPLORATORIA ML2 - V8: la conmutacion por regimen (prueba g2025)
 # =============================================================================
-# La V7 midio que NINGUN menu estatico domina ambos regimenes: el curado gana
+# La V7 midio que NINGUN conjunto estatico domina ambos regimenes: el curado gana
 # el anio normal (mezcla_prom 67,8 / 72,9) y el diverso gana el quiebre
-# (77,7-80,7 / 70,8-74,2), porque en el quiebre todo el menu curado comparte
+# (77,7-80,7 / 70,8-74,2), porque en el quiebre todo el conjunto curado comparte
 # el signo del sesgo. La V8 convierte la disyuntiva en SISTEMA:
 #
-#   mezcla_conmutada = (1-lambda) * prom[menu curado] + lambda * prom[menu diverso]
+#   mezcla_conmutada = (1-lambda) * prom[conjunto curado] + lambda * prom[conjunto diverso]
 #
 # con lambda decidido por un DETECTOR causal: el sesgo valorizado del sistema
 # base sobre los ultimos 3 meses YA OBSERVADOS, con rampa declarada entre
@@ -14,7 +14,7 @@
 # priori en el promedio simple (la leccion M4, tres veces confirmada); los
 # umbrales son constantes DECLARADAS, no calibradas mirando prueba, y la
 # senal mensual se persiste (conmutador_senal.csv) para la sensibilidad
-# post-hoc. Los menus vuelven a ser: candidatos = el curado de la V5 (asi
+# post-hoc. Los conjuntos vuelven a ser: candidatos = el curado de la V5 (asi
 # mezcla_prom/pond/h reproducen la V5 y sirven de control de determinismo),
 # candidatos_quiebre = el diverso de la V7.
 #
@@ -178,8 +178,8 @@ modelos:
     lote: 256
     calibrar: "categoria"
 
-  # --- Mezcladores (V7: menú anti-régimen) ------------------------------------
-  # Menú ampliado con los brazos de diversidad de sesgo; los pesos se
+  # --- Mezcladores (V7: conjunto anti-régimen) ------------------------------------
+  # Conjunto ampliado con los brazos de diversidad de sesgo; los pesos se
   # re-estiman solos sobre g2024.
   mezclador:
     candidatos:

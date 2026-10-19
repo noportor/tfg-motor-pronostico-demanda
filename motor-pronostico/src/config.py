@@ -685,7 +685,7 @@ def cargar_config(
         if not mezclador_crudo.get("candidatos_quiebre"):
             raise ErrorDeConfiguracion(
                 "El brazo 'mezcla_conmutada' requiere modelos.mezclador."
-                "candidatos_quiebre: el menú diverso del quiebre es una "
+                "candidatos_quiebre: el conjunto diverso del quiebre es una "
                 "decisión declarada."
             )
 

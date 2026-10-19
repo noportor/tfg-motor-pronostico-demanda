@@ -139,7 +139,7 @@ export default function Exploracion() {
     });
   }, [v1, v2, v3, v4, v5, v6, v7, v8, v9]);
 
-  // --- El talón: el sesgo del menú curado en los dos años (corrida limpia) --
+  // --- El talón: el sesgo del conjunto curado en los dos años (corrida limpia) --
   const MENU_CURADO = ["lightgbm", "chronos", "exp_smooth_opt", "holt_winters", "tft"];
   const sesgosMenu = useMemo(
     () =>
@@ -166,10 +166,10 @@ export default function Exploracion() {
         <Grid container spacing={1.5} sx={{ mb: 1 }}>
           <Grid size={{ xs: 6, md: 3 }}>
             <TarjetaKPI
-              titulo="Menú curado a un paso (g2026, V9)"
+              titulo="Conjunto curado a un paso (g2026, V9)"
               valor={`mezcla_prom ${fmt(d1(v9, "mezcla_prom"))} %`}
-              detalle="menú de 4 (sin TFT): 70,0 por recombinación"
-              ayuda="Promedio simple del menú curado {lightgbm, chronos, SES, HW, TFT} en la corrida limpia. Excluir al integrante débil (TFT) da la mejor cifra a un paso del estudio: 70,0. El campeón individual del año normal (chronos) quedó en 74,3; LightGBM en 77,0."
+              detalle="conjunto de 4 (sin TFT): 70,0 por recombinación"
+              ayuda="Promedio simple del conjunto curado {lightgbm, chronos, SES, HW, TFT} en la corrida limpia. Excluir al integrante débil (TFT) da la mejor cifra a un paso del estudio: 70,0. El campeón individual del año normal (chronos) quedó en 74,3; LightGBM en 77,0."
             />
           </Grid>
           <Grid size={{ xs: 6, md: 3 }}>
@@ -263,10 +263,10 @@ export default function Exploracion() {
           alto={300}
           filas={[
             { brazo: "chronos (calibrado por categoría, V3)", "D un paso (%)": fmt(d1(v3, "chronos")), lectura: "El mejor brazo individual a un paso en la gestión normal: 5 factores de validación convierten al cero-shot en líder. El factor global (V2) sobre-corregía." },
-            { brazo: "tft (config honesta V3, medida en V9)", "D un paso (%)": fmt(d1(v9, "tft")), lectura: "La búsqueda por validación no lo rescata: 106,1 limpio. La config V2 que PARECÍA rescatarlo solo se sostenía elegida mirando la prueba — el origen de la fuga del capítulo 6. Veredicto: el integrante débil del menú." },
+            { brazo: "tft (config honesta V3, medida en V9)", "D un paso (%)": fmt(d1(v9, "tft")), lectura: "La búsqueda por validación no lo rescata: 106,1 limpio. La config V2 que PARECÍA rescatarlo solo se sostenía elegida mirando la prueba — el origen de la fuga del capítulo 6. Veredicto: el integrante débil del conjunto." },
             { brazo: "dlinear (control lineal)", "D un paso (%)": fmt(d1(v1, "dlinear")), lectura: "El lineal le gana a las redes profundas univariantes (resultado Zeng): la arquitectura no es el cuello." },
             { brazo: "nhits (config honesta V3, medida en V9)", "D un paso (%)": fmt(d1(v9, "nhits")), lectura: "De los más débiles del año normal (solo TFT queda debajo) — y MEJOR individual del año de quiebre (70,6 en g2025): su sesgo negativo persistente es el contrapeso que la crisis premia." },
-            { brazo: "deepar", "D un paso (%)": fmt(d1(v1, "deepar")), lectura: "Tres verosimilitudes, tres colapsos (sesgo −68 a −98): incompatible con esta demanda; se retira del menú (declarado)." },
+            { brazo: "deepar", "D un paso (%)": fmt(d1(v1, "deepar")), lectura: "Tres verosimilitudes, tres colapsos (sesgo −68 a −98): incompatible con esta demanda; se retira del conjunto (declarado)." },
           ]}
         />
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -333,16 +333,16 @@ export default function Exploracion() {
           </Grid>
           <Grid size={{ xs: 12, md: 5 }}>
             <Typography variant="body2" color="text.secondary">
-              La mecánica: los sesgos <b>opuestos</b> del menú se cancelan en
+              La mecánica: los sesgos <b>opuestos</b> del conjunto se cancelan en
               el promedio (lightgbm sub-pronostica −14,1 mientras HW +5,7 y el
               resto lo compensan), una cobertura que la selección dura no puede
               dar. En limpio: <b>mezcla_prom D {fmt(d1(v9, "mezcla_prom"))} %</b>,
-              y la exclusión del integrante débil (TFT, 106,1) baja el menú de
+              y la exclusión del integrante débil (TFT, 106,1) baja el conjunto de
               4 a <b>70,0</b> (recombinación de los mismos pronósticos
               publicados) — la mejor cifra a un paso del estudio, 5,4 puntos
               bajo el motor. La primera propuesta que vence significativamente
               al ingenuo a un paso (p = 1,1×10⁻⁷). Y el hallazgo M4 se matiza
-              con la medición: con menú parejo el promedio simple no se supera;
+              con la medición: con un conjunto parejo el promedio simple no se supera;
               con un integrante débil, ponderar por validación SÍ aporta
               (mezcla_pond {fmt(d1(v9, "mezcla_pond"))} % contra
               {" "}{fmt(d1(v9, "mezcla_prom"))} %).
@@ -353,7 +353,7 @@ export default function Exploracion() {
 
       <Seccion
         titulo="3 · Caminos explorados que enseñaron por qué no (V5–V6)"
-        detalle="Dos generaciones de resultados negativos declarados. Medidos con el menú de su época (luego remedido limpio en V9): las lecciones de MÉTODO sobreviven — el calendario es un hallazgo solo-LightGBM (config nunca afectada por la fuga), y la de ponderación se matiza en V9: con un integrante débil en el menú, ponderar sí aporta."
+        detalle="Dos generaciones de resultados negativos declarados. Medidos con el conjunto de su época (luego remedido limpio en V9): las lecciones de MÉTODO sobreviven — el calendario es un hallazgo solo-LightGBM (config nunca afectada por la fuga), y la de ponderación se matiza en V9: con un integrante débil en el conjunto, ponderar sí aporta."
       >
         <TablaDatos
           alto={260}
@@ -417,10 +417,10 @@ export default function Exploracion() {
           <Grid size={{ xs: 12, md: 5 }}>
             <Typography variant="body2" color="text.secondary">
               <b>El talón de la mezcla, medido en limpio.</b> En el año normal
-              el menú tiene sesgos de ambos signos y el promedio los cancela.
+              el conjunto tiene sesgos de ambos signos y el promedio los cancela.
               En el año de quiebre los integrantes <b>estructurales</b>{" "}
               sobre-pronostican a la vez (del +7,2 del suavizado al +22,5 de
-              HW): el menú de 4 — el ganador del año normal, sin sesgos
+              HW): el conjunto de 4 — el ganador del año normal, sin sesgos
               negativos que lo compensen — cae de 70,0 a 84,4
               (recombinación), la mezcla de 5 sube a
               {" "}{fmt(d1(v9b, "mezcla_prom"))} % y el naive (que se re-ancla
@@ -440,7 +440,7 @@ export default function Exploracion() {
 
       <Seccion
         titulo="5 · La respuesta en dos actos: póliza estática y conmutación (V9)"
-        detalle="Acto 1: el menú con diversidad de sesgo deliberada (+nhits +naive_m1) rescata 6,7 puntos en el quiebre (72,1 vs 78,8) al precio de 1 punto en el año normal (75,9 vs 74,9) — ningún menú estático domina. Acto 2: un detector causal (sesgo móvil de 3 meses YA observado, rampa declarada 10→20 %) conmuta entre menús. Números limpios: corridas V9; el diverso, por recombinación de los mismos pronósticos publicados."
+        detalle="Acto 1: el conjunto con diversidad de sesgo deliberada (+nhits +naive_m1) rescata 6,7 puntos en el quiebre (72,1 vs 78,8) al precio de 1 punto en el año normal (75,9 vs 74,9) — ningún conjunto estático domina. Acto 2: un detector causal (sesgo móvil de 3 meses YA observado, rampa declarada 10→20 %) conmuta entre conjuntos. Números limpios: corridas V9; el diverso, por recombinación de los mismos pronósticos publicados."
       >
         <Typography variant="subtitle2" gutterBottom>
           Las cuatro esquinas — D valorizada (%), menor es mejor
@@ -449,21 +449,21 @@ export default function Exploracion() {
           alto={260}
           filas={[
             {
-              sistema: "menú curado (prom-5, V9)",
+              sistema: "conjunto curado (prom-5, V9)",
               "g2026 un paso": fmt(d1(v9, "mezcla_prom")),
               "g2026 D(h)": fmt(dh(v9, "mezcla_prom")),
               "g2025 un paso": fmt(d1(v9b, "mezcla_prom")),
               "g2025 D(h)": fmt(dh(v9b, "mezcla_prom")),
             },
             {
-              sistema: "menú curado (pond por validación, V9)",
+              sistema: "conjunto curado (pond por validación, V9)",
               "g2026 un paso": fmt(d1(v9, "mezcla_pond")),
               "g2026 D(h)": fmt(dh(v9, "mezcla_pond")),
               "g2025 un paso": fmt(d1(v9b, "mezcla_pond")),
               "g2025 D(h)": fmt(dh(v9b, "mezcla_pond")),
             },
             {
-              sistema: "menú diverso (prom-7, recombinación)",
+              sistema: "conjunto diverso (prom-7, recombinación)",
               "g2026 un paso": "75,9",
               "g2026 D(h)": "—",
               "g2025 un paso": "72,1",
@@ -558,7 +558,7 @@ export default function Exploracion() {
                 },
                 yAxis: {
                   type: "value",
-                  name: "λ (peso del menú diverso)",
+                  name: "λ (peso del conjunto diverso)",
                   nameLocation: "middle",
                   nameGap: 34,
                   min: 0,
@@ -611,8 +611,8 @@ export default function Exploracion() {
           significativo, queda en efecto insignificante-pequeño. Limitaciones
           declaradas: la
           señal de 3 meses es ruidosa en año normal (oscila entre −27 y +34 %
-          por la volatilidad de campaña; prima de 0,4 puntos contra el menú
-          curado), a un paso el menú diverso estático logra un desempeño
+          por la volatilidad de campaña; prima de 0,4 puntos contra el conjunto
+          curado), a un paso el conjunto diverso estático logra un desempeño
           comparable sin requerir detector, y el diseño del detector se
           informó en los dos años medidos — su validez plena espera gestiones
           futuras.

@@ -205,8 +205,8 @@ def test_conmutada_senal_rampa_y_causalidad():
     series = ["S1|X|SC"]
     real = pd.DataFrame({"S1|X|SC": [100.0] * 10}, index=indice)
 
-    # A (menú base) clava los primeros 5 meses y sobre-pronostica 30 % después;
-    # B completa el menú diverso con sesgo opuesto.
+    # A (conjunto base) clava los primeros 5 meses y sobre-pronostica 30 % después;
+    # B completa el conjunto diverso con sesgo opuesto.
     pred_a = real.copy()
     pred_a.iloc[5:] = 130.0
     pred_b = real - 20.0
@@ -234,7 +234,7 @@ def test_conmutada_senal_rampa_y_causalidad():
     assert salida.loc[indice[4], "S1|X|SC"] == pytest.approx(100.0)
 
     # Mes 8: la ventana 5..7 ya es todo sobre-pronóstico (+30 %): λ=1 y la
-    # conmutada ES el promedio del menú diverso ((130+80)/2 = 105).
+    # conmutada ES el promedio del conjunto diverso ((130+80)/2 = 105).
     sesgo, lam = conmutada._senal_en(indice[8])
     assert sesgo == pytest.approx(30.0) and lam == 1.0
     assert salida.loc[indice[8], "S1|X|SC"] == pytest.approx(105.0)
@@ -261,7 +261,7 @@ def test_conmutada_senal_rampa_y_causalidad():
     # Sin ventana completa de evidencia: λ=0 (respaldo declarado).
     assert conmutada._senal_en(indice[1])[1] == 0.0
 
-    # Menú diverso sin declarar: error inmediato y claro.
+    # Conjunto diverso sin declarar: error inmediato y claro.
     class _CfgSinQuiebre:
         particion = _Particion(indice[2], fin_validacion=indice[4])
         modelos = {"mezclador": {"candidatos": ["A"]}}

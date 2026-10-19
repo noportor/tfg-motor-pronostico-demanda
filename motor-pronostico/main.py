@@ -688,7 +688,7 @@ def comando_ejecutar(cfg) -> int:
 
     # --- 8c. Mezcladores (V4): combinar en vez de seleccionar ----------------
     # Pesos estimados SOLO en validación (RN-2, verificación activa propia) y
-    # congelados para prueba y multihorizonte. El menú es curado y declarado.
+    # congelados para prueba y multihorizonte. El conjunto es curado y declarado.
     mezclas: dict[str, object] = {}
     for nombre_mezcla in [m for m in cfg.modelos_activos if m in NOMBRES_MEZCLA]:
         mezcla = Mezclador(cfg, nombre_mezcla, predicciones, panel_real)
@@ -718,7 +718,7 @@ def comando_ejecutar(cfg) -> int:
                 print("      " + linea)
             mezclas[NOMBRE_MEZCLA_H] = mezcla
     if NOMBRE_MEZCLA_CONMUTADA in cfg.modelos_activos:
-        # V8: conmutación por régimen entre el menú curado y el diverso, con
+        # V8: conmutación por régimen entre el conjunto curado y el diverso, con
         # señal de sesgo valorizado móvil (necesita el maestro de costos).
         if not maestro.disponible:
             print(f"      {NOMBRE_MEZCLA_CONMUTADA}: SIN maestro de costos — "
@@ -752,7 +752,7 @@ def comando_ejecutar(cfg) -> int:
                 "candidatos": list(
                     cfg.modelos.get("mezclador", {}).get("candidatos", [])
                 ),
-                "mezcla_prom": "promedio simple del menú",
+                "mezcla_prom": "promedio simple del conjunto",
                 "mezcla_pond": "inverso del error compuesto (mae+|bias|) de "
                                "validación, por serie; piso numérico relativo "
                                "a la mediana de la serie",
@@ -761,7 +761,7 @@ def comando_ejecutar(cfg) -> int:
                             "aplican los pesos de h=1 (cada mes evaluado es "
                             "un pronóstico h=1)",
                 "mezcla_conmutada": "conmutación por régimen: (1−λ)·prom del "
-                                    "menú curado + λ·prom del menú diverso; "
+                                    "conjunto curado + λ·prom del conjunto diverso; "
                                     "λ = rampa declarada sobre el sesgo "
                                     "valorizado móvil YA OBSERVADO del "
                                     "sistema base (causal por construcción)",

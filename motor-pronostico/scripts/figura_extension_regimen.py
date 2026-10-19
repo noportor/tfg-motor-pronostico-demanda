@@ -31,9 +31,9 @@ from matplotlib.lines import Line2D  # noqa: E402
 # (clave en tabla_valorizada.csv, rótulo del documento)
 SISTEMAS = [
     ("mezcla_conmutada", "Sistema conmutado"),
-    ("mezcla_pond", "Menú curado (ponderado)"),
-    ("mezcla_prom", "Menú curado (promedio)"),
-    ("motor", "Motor (menú ampliado)"),
+    ("mezcla_pond", "Conjunto curado (ponderado)"),
+    ("mezcla_prom", "Conjunto curado (promedio)"),
+    ("motor", "Motor (conjunto ampliado)"),
     ("chronos", "Fundacional calibrado"),
     ("lightgbm", "LightGBM (global)"),
     ("nhits", "N-HiTS"),

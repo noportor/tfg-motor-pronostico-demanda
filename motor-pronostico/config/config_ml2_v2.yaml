@@ -3,7 +3,7 @@
 # =============================================================================
 # La V1 (config_ml2.yaml, salidas_ml2/) midió que el sesgo de la pérdida
 # domina sobre la arquitectura (todas las redes subestimaron) y que el motor
-# se degrada al crecer el menú de candidatos con selección a un paso. La V2
+# se degrada al crecer el conjunto de candidatos con selección a un paso. La V2
 # aplica las cuatro correcciones que esos números piden:
 #
 #   1. Pérdida TWEEDIE en las cuatro redes (la jugada ganadora de LightGBM,

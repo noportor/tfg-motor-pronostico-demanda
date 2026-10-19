@@ -14,7 +14,7 @@ del documento:
   por serie amortizados sobre la muestra, D valorizada a un paso, D valorizada
   global en el horizonte (orígenes rodantes), rango medio de Friedman y series
   que el motor eligió (en la fila del motor, «n. d.»: reparte la muestra). Agrega, rotuladas «fuera del
-  menú», dos referencias calculadas desde las mismas salidas: el ingenuo
+  conjunto», dos referencias calculadas desde las mismas salidas: el ingenuo
   estacional (la venta del mismo mes del año anterior) y la aproximación de
   Syntetos y Boylan (SBA), que multiplica el pronóstico de Croston por
   (1 menos alfa/2) con el alfa que Croston eligió en cada serie.
@@ -33,7 +33,7 @@ corrida principal y los de la extensión provienen de entornos distintos y no
 se comparan uno a uno. El registro de flujo no guarda procesador ni memoria.
 
 El costo unitario de cada serie, que valoriza las métricas de las referencias
-fuera del menú, se deduce de las salidas publicadas: valor de entrenamiento de
+fuera del conjunto, se deduce de las salidas publicadas: valor de entrenamiento de
 ``fuera_de_muestra.csv`` sobre la demanda OBSERVADA de entrenamiento de
 ``series_y_predicciones.csv``. El script no abre ningún archivo de ``datos/``.
 El cálculo se controla reproduciendo la D a un paso publicada del motor, del
@@ -41,7 +41,7 @@ ingenuo y de Croston y la D publicada en el horizonte del ingenuo y de
 Croston, y la cobertura del horizonte, antes de calcular las dos referencias
 nuevas; si un control no se cumple, el script se detiene.
 
-Supuestos declarados de las referencias fuera del menú:
+Supuestos declarados de las referencias fuera del conjunto:
 
 * Ingenuo estacional: el pronóstico del mes t es la venta observada en t menos
   12. Con orígenes rodantes y horizonte de hasta 12 meses ese valor ya es
@@ -90,8 +90,8 @@ NOMBRES_P2 = {
     "naive_m1_gf": "Ingenuo con factor de crecimiento",
     "ma_2_gf": "Prom. móvil 2 m con factor de crecimiento",
     "ma_12_gf": "Prom. móvil 12 m con factor de crecimiento",
-    "ingenuo_estacional": "Ingenuo estacional (fuera del menú)",
-    "sba": "SBA aproximado (fuera del menú)",
+    "ingenuo_estacional": "Ingenuo estacional (fuera del conjunto)",
+    "sba": "SBA aproximado (fuera del conjunto)",
 }
 FUERA_DEL_MENU = ["ingenuo_estacional", "sba"]
 ESTADISTICOS = ["naive_m1", "naive_m1_gf", "ma_2", "ma_2_gf", "ma_12", "ma_12_gf",
@@ -170,7 +170,7 @@ def _costo_por_serie(carpeta: Path, datos: pd.DataFrame) -> pd.Series:
     return costo[costo > 0]
 
 
-# ------------------------------------------------- referencias fuera del menú
+# ------------------------------------------------- referencias fuera del conjunto
 def referencias_fuera_del_menu(carpeta: Path) -> tuple[dict, dict]:
     """Ingenuo estacional y SBA a un paso y en el horizonte, con sus controles."""
     datos = pd.read_csv(carpeta / "series_y_predicciones.csv")

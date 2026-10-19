@@ -11,13 +11,13 @@ correlacionados de los candidatos sin apostar todo a uno.
 
 Dos mezcladores, para medir la afirmación en estos datos:
 
-``mezcla_prom``   Promedio simple del menú curado — la hipótesis M4 pura.
+``mezcla_prom``   Promedio simple del conjunto curado — la hipótesis M4 pura.
 ``mezcla_pond``   Promedio ponderado por el INVERSO del error compuesto de
                   validación por serie — un punto medio entre promediar y
                   seleccionar: la evidencia de validación inclina los pesos,
                   pero nunca apuesta todo a un candidato.
 ``mezcla_h``      (V5) Promedio ponderado POR HORIZONTE: la V4 midió que el
-                  menú óptimo cambia con la distancia (Chronos brilla cerca,
+                  conjunto óptimo cambia con la distancia (Chronos brilla cerca,
                   LightGBM sostiene lejos, el suavizado solo sirve corto) y
                   que los pesos POR SERIE son ruidosos (12 observaciones:
                   ``mezcla_pond`` perdió contra el promedio). Acá el peso es
@@ -29,7 +29,7 @@ La restricción que los hace válidos (RN-2)
 ------------------------------------------
 Los pesos se estiman EXCLUSIVAMENTE sobre el bloque de validación (misma
 verificación activa que el motor) y quedan congelados: en prueba y en el
-multihorizonte se aplican tal cual. El menú es curado y declarado en la
+multihorizonte se aplican tal cual. El conjunto es curado y declarado en la
 configuración — mezclar brazos rotos no es cobertura, es contaminación.
 """
 
@@ -50,21 +50,21 @@ def _menu_declarado(
     predicciones: dict[str, pd.DataFrame],
     declarados: list[str] | None = None,
 ) -> list[str]:
-    """El menú declarado (de la config o explícito), verificado contra los
+    """El conjunto declarado (de la config o explícito), verificado contra los
     brazos activos."""
     if declarados is None:
         declarados = list(cfg.modelos.get("mezclador", {}).get("candidatos", []))
     if not declarados:
         raise ValueError(
-            "modelos.mezclador.candidatos está vacío: el menú del "
+            "modelos.mezclador.candidatos está vacío: el conjunto del "
             "mezclador es una decisión declarada, no un implícito."
         )
     candidatos = sorted(m for m in declarados if m in predicciones)
     ausentes = sorted(set(declarados) - set(candidatos))
     if ausentes:
         raise ValueError(
-            f"El menú del mezclador declara candidatos sin pronóstico: "
-            f"{ausentes}. El menú se declara sobre brazos activos."
+            f"El conjunto del mezclador declara candidatos sin pronóstico: "
+            f"{ausentes}. El conjunto se declara sobre brazos activos."
         )
     return candidatos
 
@@ -94,7 +94,7 @@ def _promedio_ponderado(
 
 
 class Mezclador:
-    """Combina los pronósticos de un menú curado con pesos de validación."""
+    """Combina los pronósticos de un conjunto curado con pesos de validación."""
 
     def __init__(
         self,
@@ -110,8 +110,8 @@ class Mezclador:
         self.nombre = nombre
         self.predicciones = predicciones
         self.panel = panel
-        # `candidatos` explícito permite instancias internas con OTRO menú
-        # (la conmutada usa dos); sin él rige el menú de la configuración.
+        # `candidatos` explícito permite instancias internas con OTRO conjunto
+        # (la conmutada usa dos); sin él rige el conjunto de la configuración.
         self.candidatos = _menu_declarado(cfg, predicciones, candidatos)
         self.pesos: pd.DataFrame | None = None  # serie × candidato
 
@@ -201,7 +201,7 @@ class Mezclador:
     def informe_lineas(self) -> list[str]:
         regla = ("promedio simple" if self.nombre == "mezcla_prom"
                  else "inverso del error compuesto de validación, por serie")
-        salida = [f"{self.nombre}: {regla} · menú: {', '.join(self.candidatos)}"]
+        salida = [f"{self.nombre}: {regla} · conjunto: {', '.join(self.candidatos)}"]
         if self.nombre == "mezcla_pond" and self.pesos is not None:
             reparto = (self.pesos.div(self.pesos.sum(axis=1), axis=0)
                        .mean(axis=0).sort_values(ascending=False))
@@ -292,7 +292,7 @@ class MezcladorHorizonte:
         )
         if ausentes:
             raise ValueError(
-                "El menú de mezcla_h declara candidatos sin abanico de "
+                "El conjunto de mezcla_h declara candidatos sin abanico de "
                 f"validación: {ausentes}."
             )
 
@@ -379,7 +379,7 @@ class MezcladorHorizonte:
     def informe_lineas(self) -> list[str]:
         salida = [
             f"{self.nombre}: inverso de la D valorizada de validación, por "
-            f"horizonte · menú: {', '.join(self.candidatos)}"
+            f"horizonte · conjunto: {', '.join(self.candidatos)}"
         ]
         if self.pesos_h is not None:
             reparto = self.pesos_h.div(self.pesos_h.sum(axis=1), axis=0)
@@ -393,16 +393,16 @@ class MezcladorHorizonte:
 
 
 class MezclaConmutada:
-    """Conmutación por régimen entre dos menús de mezcla (V8).
+    """Conmutación por régimen entre dos conjuntos de mezcla (V8).
 
-    La V7 midió que ningún menú estático domina ambos regímenes: el menú
-    curado gana el año normal (67,8 / 72,9) y el menú diverso gana el año de
-    quiebre (77,7-80,7 / 70,8-74,2) porque en el quiebre TODO el menú curado
+    La V7 midió que ningún conjunto estático domina ambos regímenes: el conjunto
+    curado gana el año normal (67,8 / 72,9) y el conjunto diverso gana el año de
+    quiebre (77,7-80,7 / 70,8-74,2) porque en el quiebre TODO el conjunto curado
     comparte el signo del sesgo y no queda nada que cancelar. Este brazo
     convierte esa disyuntiva en un sistema: dos mezclas de promedio simple
     (la regla se fija a priori — la lección M4 tres veces confirmada) sobre
-    los dos menús declarados, y un DETECTOR causal que transfiere peso hacia
-    el menú diverso cuando el sistema base muestra sesgo de régimen.
+    los dos conjuntos declarados, y un DETECTOR causal que transfiere peso hacia
+    el conjunto diverso cuando el sistema base muestra sesgo de régimen.
 
     El detector (RN-3/RN-2 por construcción):
     - Señal: el sesgo valorizado del sistema BASE sobre los últimos
@@ -449,7 +449,7 @@ class MezclaConmutada:
         if not quiebre:
             raise ValueError(
                 "mezcla_conmutada requiere modelos.mezclador."
-                "candidatos_quiebre: el menú diverso es una decisión "
+                "candidatos_quiebre: el conjunto diverso es una decisión "
                 "declarada, no un implícito."
             )
         self.cfg = cfg

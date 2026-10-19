@@ -169,8 +169,8 @@ modelos:
     calibrar: "categoria"
 
   # --- Mezcladores ------------------------------------------------------------
-  # El MISMO menú curado de la V4 para los tres mezcladores: la comparación
-  # prom vs pond vs h aísla la REGLA de pesos, no el menú. Sin lightgbm_directo
+  # El MISMO conjunto curado de la V4 para los tres mezcladores: la comparación
+  # prom vs pond vs h aísla la REGLA de pesos, no el conjunto. Sin lightgbm_directo
   # (a un paso duplica a lightgbm y sesgaría el promedio; compite solo, como
   # especialista del horizonte). Sin brazos colapsados.
   mezclador:

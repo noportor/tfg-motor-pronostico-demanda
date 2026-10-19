@@ -1,25 +1,25 @@
 # =============================================================================
-# CORRIDA EXPLORATORIA ML2 — V7: el menú anti-régimen (prueba g2026)
+# CORRIDA EXPLORATORIA ML2 — V7: el conjunto anti-régimen (prueba g2026)
 # =============================================================================
 # La corrida de blindaje midió el talón de Aquiles de la mezcla: gana el año
 # normal CANCELANDO sesgos opuestos, pero en el año de quiebre (g2025) TODO
-# el menú sobre-pronostica (+7..+35) y no queda nada que cancelar — la mezcla
+# el conjunto sobre-pronostica (+7..+35) y no queda nada que cancelar — la mezcla
 # cae de 67,8 a 90,2 mientras el naive (78,7) y N-HiTS (72,6) lideran.
 #
-# HIPÓTESIS V7: un menú con diversidad de sesgo DELIBERADA resiste el quiebre.
-# Se agregan al menú los dos brazos que el blindaje señaló:
+# HIPÓTESIS V7: un conjunto con diversidad de sesgo DELIBERADA resiste el quiebre.
+# Se agregan al conjunto los dos brazos que el blindaje señaló:
 #   - nhits: el brazo de sesgo negativo persistente (−17,8 en g2026; −7,1 y
-#     LÍDER a un paso en g2025) — el contrapeso estructural del menú.
+#     LÍDER a un paso en g2025) — el contrapeso estructural del conjunto.
 #   - naive_m1: el brazo que se re-ancla cada mes (sesgo −3,6 / −0,9) — la
 #     adaptividad pura que el año de quiebre premia.
 # Riesgo declarado: en el año normal ambos son brazos débiles (85,6 y 84,0)
 # y el promedio simple los traga sin ponderar — el costo de la robustez se
 # MIDE, no se supone. Las tres reglas de mezcla (prom/pond/h) comparten el
-# menú nuevo: la comparación aísla la regla, como siempre.
+# conjunto nuevo: la comparación aísla la regla, como siempre.
 #
 # ATRIBUCIÓN LIMPIA: todo lo demás queda EXACTO a la V5 (sin el calendario de
 # la V6, que es una palanca aparte ya medida con sus contrapartidas): la única
-# variable contra la línea base V5 es el MENÚ. La gemela de esta corrida
+# variable contra la línea base V5 es el CONJUNTO. La gemela de esta corrida
 # (config_ml2_v7_blindaje.yaml) repite el cambio sobre el protocolo desplazado
 # (prueba g2025) contra la línea base del blindaje. V1-V6 intactas.
 # =============================================================================
@@ -159,9 +159,9 @@ modelos:
     calibrar: "categoria"
 
   # --- Mezcladores ------------------------------------------------------------
-  # V7: el menú de la V4-V5 MÁS los dos brazos de diversidad de sesgo que el
+  # V7: el conjunto de la V4-V5 MÁS los dos brazos de diversidad de sesgo que el
   # blindaje señaló (nhits = contrapeso estructural; naive_m1 = adaptividad
-  # pura). Las tres reglas comparten el menú: la comparación aísla la regla.
+  # pura). Las tres reglas comparten el conjunto: la comparación aísla la regla.
   # Sin lightgbm_directo (a un paso duplica a lightgbm y sesgaría el promedio).
   mezclador:
     candidatos:

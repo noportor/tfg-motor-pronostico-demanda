@@ -167,7 +167,7 @@ modelos:
     calibrar: "categoria"
 
   # --- Mezcladores ------------------------------------------------------------
-  # Mismo menú curado; los pesos se re-estiman solos sobre g2024.
+  # Mismo conjunto curado; los pesos se re-estiman solos sobre g2024.
   mezclador:
     candidatos:
       - lightgbm

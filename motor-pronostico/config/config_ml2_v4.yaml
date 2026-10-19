@@ -6,13 +6,13 @@
 # estratos y horizontes. La V4 aplica el hallazgo más robusto de las
 # competencias M: COMBINAR.
 #
-#   1. Dos mezcladores sobre un menú curado, con pesos SOLO de validación:
+#   1. Dos mezcladores sobre un conjunto curado, con pesos SOLO de validación:
 #      mezcla_prom (promedio simple — la hipótesis M4 pura) y mezcla_pond
 #      (inverso del error compuesto de validación, por serie).
 #   2. lightgbm_directo: 12 boosters, uno por horizonte, con las features
 #      REALES del pipeline (RN-3 las hace computables en el origen) — el
 #      ataque a la recursión, la única debilidad medida del campeón.
-#   3. Menú curado por la evidencia: DeepAR fuera (tres verosimilitudes,
+#   3. Conjunto curado por la evidencia: DeepAR fuera (tres verosimilitudes,
 #      tres colapsos); TFT en su config V2 (la mejor MEDIDA en prueba: la
 #      búsqueda V3 no transfirió por el quiebre de régimen del pliegue);
 #      N-HiTS en su config V1 (misma razón).
@@ -170,7 +170,7 @@ modelos:
     calibrar: "categoria"
 
   # --- Mezcladores (V4) -------------------------------------------------------
-  # El menú es CURADO por la evidencia de V1–V3: los brazos fuertes y estables.
+  # El conjunto es CURADO por la evidencia de V1–V3: los brazos fuertes y estables.
   # Sin lightgbm_directo (a un paso duplica a lightgbm y sesgaría el promedio;
   # compite solo, como especialista del horizonte). Sin brazos colapsados.
   mezclador:

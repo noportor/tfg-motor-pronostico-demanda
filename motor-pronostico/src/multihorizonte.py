@@ -658,7 +658,7 @@ def evaluar(
             motor[presentes] = proyecciones[nombre][presentes]
         proyecciones["motor"] = motor
 
-        # Los mezcladores componen las proyecciones de su menú con los pesos
+        # Los mezcladores componen las proyecciones de su conjunto con los pesos
         # CONGELADOS de validación: en el horizonte no se re-decide nada,
         # igual que la selección del motor.
         for nombre_mezcla, mezcla in (mezclas or {}).items():
