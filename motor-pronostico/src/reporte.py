@@ -24,9 +24,10 @@ código, la configuración usada y el hash de cada salida producida. Con él,
 cualquier número del documento se puede rastrear hasta la corrida que lo generó.
 
 Los archivos auxiliares de la captura (costos, quiebres, tipo de cambio, mapeo
-de SKU y manifiesto de extracción) se sellan también, bajo
+de SKU, mapeo de categorías y manifiesto de extracción) se sellan también, bajo
 ``datos.auxiliares``: nombre, bytes y SHA-256 de cada archivo del directorio de
-datos crudos, con la marca de si la corrida lo lee. Sólo se publican hashes y
+datos crudos, con la marca de si la corrida lo lee (la tabla de categorías
+figura como leída cuando la carga la aplicó). Sólo se publican hashes y
 tamaños, nunca contenido.
 """
 
@@ -45,6 +46,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .carga import ruta_mapeo_categoria
 from .config import Config
 
 
@@ -80,6 +82,10 @@ def archivos_auxiliares(cfg: Config, ruta_datos: Path) -> list[dict]:
         leidos.add((cfg.raiz / cfg.features.archivo_quiebres).resolve())
     if v2.get("tipo_cambio") and cfg.features.archivo_tipo_cambio:
         leidos.add((cfg.raiz / cfg.features.archivo_tipo_cambio).resolve())
+    if "categoria" in cfg.datos.columnas:
+        # src/carga.py la aplica cuando existe: el sello registra que la
+        # correspondencia de categorías entró en la corrida.
+        leidos.add(ruta_mapeo_categoria(ruta_datos).resolve())
 
     def _sello(ruta: Path, nombre: str) -> dict:
         return {

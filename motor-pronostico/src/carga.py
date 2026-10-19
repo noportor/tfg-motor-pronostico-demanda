@@ -7,6 +7,15 @@ convertir.
 Ninguna conversión fallida se rellena con un valor plausible (RN-1): las filas
 inconvertibles se descartan y se cuentan, y ese conteo viaja hasta el informe de
 inspección.
+
+Las categorías de producto se seudonimizan AL CARGAR, no al extraer: la captura
+conserva su nombre real (y con él el SHA-256 que sellan las corridas) y una
+tabla local, ``mapeo_categoria.csv`` junto al archivo de ventas y fuera del
+repositorio como el mapeo de SKU, traduce cada categoría a su seudónimo
+(``Categoría A``, …) antes de cualquier otro uso. Si la tabla existe y la
+captura trae una categoría sin fila, la carga se detiene: ningún nombre real
+sigue vivo aguas abajo. Sin la tabla (las pruebas, un clon del repositorio
+público) la columna pasa tal cual.
 """
 
 from __future__ import annotations
@@ -23,9 +32,93 @@ COLUMNAS_CANONICAS = ("fecha", "sku", "canal", "regional", "cantidad")
 EXTENSIONES_CSV = {".csv", ".txt", ".tsv"}
 EXTENSIONES_EXCEL = {".xlsx", ".xlsm", ".xls"}
 
+#: Tabla local de correspondencia de categorías, junto al archivo de ventas.
+NOMBRE_MAPEO_CATEGORIA = "mapeo_categoria.csv"
+COLUMNAS_MAPEO_CATEGORIA = ("categoria_real", "categoria_seudonimo")
+
 
 class ErrorDeCarga(Exception):
     """El archivo de entrada no puede leerse tal como está declarado."""
+
+
+def ruta_mapeo_categoria(ruta_datos: str | Path) -> Path:
+    """Dónde se busca la tabla de correspondencia: junto al archivo de ventas."""
+    return Path(ruta_datos).parent / NOMBRE_MAPEO_CATEGORIA
+
+
+def leer_mapeo_categoria(ruta: str | Path) -> dict[str, str] | None:
+    """Categoría real -> seudónimo, o ``None`` si la tabla no existe.
+
+    La tabla se valida entera antes de usarla: una fila con un valor vacío,
+    una categoría real repetida o dos categorías con el mismo seudónimo
+    (que las fundiría en una sola serie de categoría) detienen la carga.
+    """
+    ruta = Path(ruta)
+    if not ruta.exists():
+        return None
+    tabla = pd.read_csv(ruta, dtype=str, keep_default_na=False, encoding="utf-8")
+    faltantes = [c for c in COLUMNAS_MAPEO_CATEGORIA if c not in tabla.columns]
+    if faltantes:
+        raise ErrorDeCarga(
+            f"La tabla de correspondencia de categorías {ruta} no tiene las "
+            f"columnas {faltantes}; se esperan {list(COLUMNAS_MAPEO_CATEGORIA)}."
+        )
+    reales = tabla["categoria_real"].str.strip()
+    seudonimos = tabla["categoria_seudonimo"].str.strip()
+    if (reales == "").any() or (seudonimos == "").any():
+        raise ErrorDeCarga(
+            f"La tabla de correspondencia de categorías {ruta} tiene filas con "
+            "un valor vacío."
+        )
+    if reales.duplicated().any() or seudonimos.duplicated().any():
+        raise ErrorDeCarga(
+            f"La tabla de correspondencia de categorías {ruta} repite una "
+            "categoría o un seudónimo: cada categoría tiene que tener un "
+            "seudónimo propio."
+        )
+    mapeo = dict(zip(reales, seudonimos))
+    if not conserva_el_orden(mapeo):
+        raise ErrorDeCarga(
+            f"La tabla de correspondencia de categorías {ruta} no conserva el "
+            "orden alfabético de los nombres reales: ordenados por nombre real, "
+            "los seudónimos también tienen que quedar ordenados. Si no, los "
+            "códigos de la columna categórica cambian y la corrida deja de "
+            "reproducir a la publicada."
+        )
+    return mapeo
+
+
+def conserva_el_orden(mapeo: dict[str, str]) -> bool:
+    """¿Ordenar por nombre real y por seudónimo da la misma permutación?
+
+    La columna ``categoria`` pasa a ``category`` de pandas (features v2 y la
+    red neuronal), cuyos códigos siguen el orden de los valores. Si el
+    seudónimo respeta el orden de los nombres reales, cada categoría conserva
+    su código y el modelo ve exactamente los mismos números.
+    """
+    por_nombre_real = [mapeo[real] for real in sorted(mapeo)]
+    return por_nombre_real == sorted(mapeo.values())
+
+
+def seudonimizar_categorias(
+    categorias: pd.Series, mapeo: dict[str, str] | None, origen: str | Path = ""
+) -> pd.Series:
+    """Reemplaza cada categoría por su seudónimo; identidad sin tabla.
+
+    Los valores nulos siguen nulos. Una categoría sin fila en la tabla es un
+    error: dejarla pasar mantendría vivo un nombre real.
+    """
+    if mapeo is None:
+        return categorias
+    observadas = set(categorias.dropna().unique())
+    sin_fila = sorted(str(c) for c in observadas - set(mapeo))
+    if sin_fila:
+        raise ErrorDeCarga(
+            f"La captura trae {len(sin_fila)} categoría(s) sin fila en la tabla "
+            f"de correspondencia {origen}: {sin_fila}. Agregalas a la tabla "
+            "con su seudónimo antes de correr."
+        )
+    return categorias.map(mapeo, na_action="ignore").astype("string")
 
 
 @dataclass
@@ -41,18 +134,29 @@ class InformeCarga:
     filas_con_clave_nula: int = 0
     columnas_originales: list[str] = field(default_factory=list)
     mapeo_aplicado: dict[str, str] = field(default_factory=dict)
+    # Tabla de correspondencia de categorías aplicada (ruta y SHA-256, nunca
+    # su contenido); None si no había tabla y la columna pasó tal cual.
+    mapeo_categoria: Path | None = None
+    mapeo_categoria_sha256: str | None = None
 
     @property
     def filas_descartadas(self) -> int:
         return self.filas_leidas - self.filas_validas
 
     def lineas(self) -> list[str]:
-        return [
+        lineas = [
             f"Archivo                        : {self.ruta}",
             f"SHA-256                        : {self.sha256}",
             f"Columnas en el archivo         : {', '.join(self.columnas_originales)}",
             f"Mapeo aplicado                 : "
             + ", ".join(f"{o} -> {c}" for c, o in self.mapeo_aplicado.items()),
+        ]
+        if self.mapeo_categoria is not None:
+            lineas.append(
+                f"Categorías seudonimizadas con  : {self.mapeo_categoria.name} "
+                f"(SHA-256 {self.mapeo_categoria_sha256})"
+            )
+        return lineas + [
             f"Filas leídas                   : {self.filas_leidas:,}",
             f"Fechas no convertibles         : {self.fechas_no_convertidas:,}",
             f"Cantidades no convertibles     : {self.cantidades_no_convertidas:,}",
@@ -231,9 +335,17 @@ def cargar(cfg: Config, ruta: str | Path | None = None) -> tuple[pd.DataFrame, I
         for canonica in COLUMNAS_CANONICAS
     })
     if "categoria" in cfg.datos.columnas:
-        df["categoria"] = (
-            bruto[cfg.datos.columnas["categoria"]].astype("string").str.strip()
+        # Seudónimo ANTES de cualquier otro uso: la población, las exógenas,
+        # el calendario y las figuras sólo ven ``Categoría A``, …
+        ruta_mapeo = ruta_mapeo_categoria(ruta)
+        mapeo = leer_mapeo_categoria(ruta_mapeo)
+        df["categoria"] = seudonimizar_categorias(
+            bruto[cfg.datos.columnas["categoria"]].astype("string").str.strip(),
+            mapeo, ruta_mapeo,
         )
+        if mapeo is not None:
+            informe.mapeo_categoria = ruta_mapeo
+            informe.mapeo_categoria_sha256 = _sha256_de(ruta_mapeo)
     # Exógenas de la misma tabla (features v2). NaN = sin dato, nunca 0.
     for opcional in ("precio", "perdidas"):
         if opcional in cfg.datos.columnas:

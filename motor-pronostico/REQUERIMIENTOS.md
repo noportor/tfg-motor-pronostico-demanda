@@ -301,6 +301,7 @@ motor-pronostico/
 ├── config/
 │   ├── config.yaml
 │   ├── extraccion.ejemplo.yaml # plantilla del esquema de origen
+│   ├── mapeo_categoria.ejemplo.csv # plantilla de la tabla de categorías (orden alfabético)
 │   └── extraccion.local.yaml   # el esquema REAL — NUNCA se versiona
 ├── datos/
 │   ├── crudo/                  # inmutable

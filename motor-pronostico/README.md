@@ -88,10 +88,10 @@ de Nemenyi).
   de salidas: `python main.py ejecutar --config config/config_sensibilidad_a.yaml`.
   Los valores por defecto de los interruptores reproducen la corrida publicada.
 - **Manifiesto por corrida**: registra el SHA-256 del snapshot de datos y de
-  cada archivo auxiliar de la captura (costos, quiebres, tipo de cambio, mapeo y
-  manifiesto de extracción, con nombre y bytes, bajo `datos.auxiliares`), la
-  configuración efectiva y la versión del código con que se obtuvo cada
-  resultado.
+  cada archivo auxiliar de la captura (costos, quiebres, tipo de cambio, mapeos
+  de SKU y de categorías y manifiesto de extracción, con nombre y bytes, bajo
+  `datos.auxiliares`), la configuración efectiva y la versión del código con
+  que se obtuvo cada resultado.
 - **Contraste sobre lo publicado**: las pruebas estadísticas se ejecutan sobre
   la misma `matriz_contraste.csv` que se publica como salida — lo reportado en
   el documento y lo reproducible son el mismo archivo.
@@ -134,6 +134,13 @@ lo garantizan:
    extracción local nunca se versionan.
 2. **Seudonimización** — los códigos de producto se reemplazan al extraer
    (`SKU-0001`, …); la tabla de correspondencia queda fuera del repositorio.
+   Las categorías de producto se reemplazan al cargar (`Categoría A`, …) con
+   la tabla local `datos/crudo/mapeo_categoria.csv` (plantilla en
+   `config/mapeo_categoria.ejemplo.csv`): la captura no cambia y una categoría
+   sin fila en la tabla detiene la carga. La tabla tiene que conservar el orden
+   alfabético de los nombres reales (ordenada por nombre real, los seudónimos
+   también quedan ordenados) para que la codificación categórica no cambie; la
+   carga lo verifica.
 3. **Control automático** — `tests/test_confidencialidad.py` revisa todos los
    archivos que git rastrea buscando nombres reales, identificadores del
    sistema de origen y credenciales; la suite falla si encuentra algo.

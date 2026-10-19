@@ -8,7 +8,10 @@ casos elegidos por regla y los inicios de validación y de prueba) y llama a
 observada se rotula «Ventas observadas»: es la venta registrada, no la demanda
 real, que no se observa cuando hay quiebres de inventario. Antes de dibujar,
 verifica el SHA-256 de los insumos contra el ``manifiesto.json`` de la misma
-corrida. Uso:
+corrida. Los rótulos de los insumos de una corrida anterior a la seudonimización
+de categorías traen el nombre real: si existe la tabla local
+``datos/crudo/mapeo_categoria.csv``, se rotulan con el seudónimo antes de dibujar.
+Uso:
 
     docker compose run --rm tfg python scripts/figura_casos.py
 """
@@ -24,11 +27,13 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
+from src.carga import NOMBRE_MAPEO_CATEGORIA, leer_mapeo_categoria  # noqa: E402
 from src.figuras import figura_casos  # noqa: E402
 
 SALIDAS = RAIZ / "salidas"
 INSUMOS = SALIDAS / "insumos_figuras.pkl"
 DESTINO = RAIZ / "resultados" / "figuras" / "figura13_casos.png"
+MAPEO_CATEGORIA = RAIZ / "datos" / "crudo" / NOMBRE_MAPEO_CATEGORIA
 
 
 def sha256(ruta: Path) -> str:
@@ -49,10 +54,28 @@ def verificar_insumos() -> str:
     return actual
 
 
+def rotulos_con_seudonimo(casos: list[tuple[str, str]],
+                          mapeo: dict[str, str] | None) -> list[tuple[str, str]]:
+    """«(NOMBRE REAL)» pasa a «(categoría X)» en cada rótulo; identidad sin tabla."""
+    if not mapeo:
+        return list(casos)
+    salida = []
+    for serie, etiqueta in casos:
+        for real, seudonimo in mapeo.items():
+            etiqueta = etiqueta.replace(
+                f"({real})", f"({seudonimo[:1].lower()}{seudonimo[1:]})"
+            )
+        salida.append((serie, etiqueta))
+    return salida
+
+
 def main() -> None:
     huella = verificar_insumos()
     with INSUMOS.open("rb") as archivo:
         insumos = pickle.load(archivo)
+    insumos["casos"] = rotulos_con_seudonimo(
+        insumos["casos"], leer_mapeo_categoria(MAPEO_CATEGORIA)
+    )
     ruta = figura_casos(
         insumos["panel_real_casos"], insumos["predicciones_casos"],
         insumos["casos"], insumos["inicio_validacion"], insumos["inicio_prueba"],

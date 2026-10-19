@@ -279,6 +279,13 @@ def comando_ejecutar(cfg) -> int:
             "mapeo_columnas": informe_carga.mapeo_aplicado,
             "separador": cfg.datos.separador,
             "codificacion": cfg.datos.codificacion,
+            # Ruta y SHA-256 de la tabla local de categorías, nunca su
+            # contenido; None = la columna pasó tal cual (sin tabla).
+            "mapeo_categoria": (
+                {"archivo": informe_carga.mapeo_categoria.name,
+                 "sha256": informe_carga.mapeo_categoria_sha256}
+                if informe_carga.mapeo_categoria is not None else None
+            ),
         },
         conteos={
             "fechas_no_convertidas": informe_carga.fechas_no_convertidas,
