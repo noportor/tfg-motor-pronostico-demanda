@@ -47,4 +47,4 @@ Costo faltante (series con historia de entrenamiento)
 - Series con historia sin costo: 311 de 3.937.
 - Muestra: 155 series y 31 productos sin costo; 1,64 % del volumen de entrenamiento de la muestra.
 
-Corrida: 2026-10-14T19:16:49+00:00 (commit f31684386648566a5f4584a44da763bedc632437).
+Corrida: 2026-10-19T18:49:36+00:00 (commit 472b891eca2998e3ec55a8a49511032be388bf96).

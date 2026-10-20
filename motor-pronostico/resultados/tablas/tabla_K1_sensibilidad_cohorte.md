@@ -57,6 +57,6 @@ Paso 5 en la A (presencia en validación sobre la vida observada, de la primera 
 
 Controles: en cada corrida, la cohorte de errores_por_serie, fuera_de_muestra y cohorte_flujo coincide; la D reconstruida desde los archivos por serie reproduce tabla_valorizada.csv (diferencia máxima original: 4.7e-08 pp, A: cohorte al origen: 5.7e-08 pp, B: cohorte al origen, sólo activas: 5.2e-08 pp); la A contiene la cohorte publicada; la B es la A restringida a las activas al origen; todas las series sin venta en prueba son series agregadas por la A.
 
-Corridas: original = salidas (2026-10-15T15:54:41+00:00, commit 157ba1d, 2.338,7 s); A: cohorte al origen = salidas_sensibilidad_a (2026-10-15T16:36:43+00:00, commit 157ba1d, 2.505,1 s); B: cohorte al origen, sólo activas = salidas_sensibilidad_b (2026-10-15T17:13:48+00:00, commit 157ba1d, 2.213,8 s).
+Corridas: original = salidas (2026-10-19T18:49:36+00:00, commit 472b891, 2.242,2 s); A: cohorte al origen = salidas_sensibilidad_a (2026-10-19T19:32:59+00:00, commit 472b891, 2.587,6 s); B: cohorte al origen, sólo activas = salidas_sensibilidad_b (2026-10-19T20:10:51+00:00, commit 472b891, 2.258,3 s).
 Archivo de quiebres: verificado contra datos.auxiliares de la corrida publicada.
 Meses comunes: en los 18.502 meses-serie del bloque de prueba que evalúa la corrida original, 9 de los 11 modelos pronostican exactamente lo mismo en la A (croston, exp_smooth_opt, holt_winters, ma_12, ma_12_gf, ma_2, ma_2_gf, naive_m1, naive_m1_gf); restringida a esos meses, la D del motor en la A es 75,06 % y la de ma_12_gf, 99,97 %.

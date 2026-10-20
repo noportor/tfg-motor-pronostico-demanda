@@ -1,54 +1,54 @@
 {
  "principal": {
   "resultados": {
-   "generado_en": "2026-10-14T19:16:49+00:00",
-   "commit": "f31684386648566a5f4584a44da763bedc632437"
+   "generado_en": "2026-10-19T18:49:36+00:00",
+   "commit": "472b891eca2998e3ec55a8a49511032be388bf96"
   },
   "tiempos": {
-   "generado_en": "2026-10-14T19:16:49+00:00",
-   "commit": "f31684386648566a5f4584a44da763bedc632437"
+   "generado_en": "2026-10-19T18:49:36+00:00",
+   "commit": "472b891eca2998e3ec55a8a49511032be388bf96"
   },
   "series_muestra": 1668,
-  "segundos_preparacion_variables": 24.6,
-  "segundos_seleccion_motor": 4.4,
-  "segundos_explicacion": 59.41,
-  "segundos_etapa_modelos": 11.34,
-  "segundos_etapa_multihorizonte": 2099.17,
-  "segundos_suma_estadisticos": 1.35
+  "segundos_preparacion_variables": 27.83,
+  "segundos_seleccion_motor": 5.01,
+  "segundos_explicacion": 63.77,
+  "segundos_etapa_modelos": 12.71,
+  "segundos_etapa_multihorizonte": 2117.51,
+  "segundos_suma_estadisticos": 1.3900000000000001
  },
  "extension_2026": {
   "resultados": {
-   "generado_en": "2026-08-23T18:45:47+00:00",
-   "commit": "bbf458718e913b6e95a5f3374f1d5f63dd81811f"
+   "generado_en": "2026-10-19T21:31:35+00:00",
+   "commit": "472b891eca2998e3ec55a8a49511032be388bf96"
   },
   "tiempos": {
-   "generado_en": "2026-08-23T18:45:47+00:00",
-   "commit": "bbf458718e913b6e95a5f3374f1d5f63dd81811f"
+   "generado_en": "2026-10-19T21:31:35+00:00",
+   "commit": "472b891eca2998e3ec55a8a49511032be388bf96"
   },
   "series_muestra": 1668,
-  "segundos_preparacion_variables": 26.08,
-  "segundos_seleccion_motor": 338.16,
-  "segundos_explicacion": 4.92,
-  "segundos_etapa_modelos": 370.84,
-  "segundos_etapa_multihorizonte": 2861.55,
-  "segundos_suma_estadisticos": 1.61
+  "segundos_preparacion_variables": 37.85,
+  "segundos_seleccion_motor": 483.98,
+  "segundos_explicacion": 4.5,
+  "segundos_etapa_modelos": 393.48,
+  "segundos_etapa_multihorizonte": 3892.8,
+  "segundos_suma_estadisticos": 2.01
  },
  "extension_2025": {
   "resultados": {
-   "generado_en": "2026-08-23T19:40:59+00:00",
-   "commit": "bbf458718e913b6e95a5f3374f1d5f63dd81811f"
+   "generado_en": "2026-10-19T22:47:48+00:00",
+   "commit": "472b891eca2998e3ec55a8a49511032be388bf96"
   },
   "tiempos": {
-   "generado_en": "2026-08-23T19:40:59+00:00",
-   "commit": "bbf458718e913b6e95a5f3374f1d5f63dd81811f"
+   "generado_en": "2026-10-19T22:47:48+00:00",
+   "commit": "472b891eca2998e3ec55a8a49511032be388bf96"
   },
   "series_muestra": 1613,
-  "segundos_preparacion_variables": 23.98,
-  "segundos_seleccion_motor": 310.56,
-  "segundos_explicacion": 3.82,
-  "segundos_etapa_modelos": 324.71,
-  "segundos_etapa_multihorizonte": 2622.58,
-  "segundos_suma_estadisticos": 1.11
+  "segundos_preparacion_variables": 24.31,
+  "segundos_seleccion_motor": 449.93,
+  "segundos_explicacion": 4.08,
+  "segundos_etapa_modelos": 402.08,
+  "segundos_etapa_multihorizonte": 3662.9,
+  "segundos_suma_estadisticos": 1.1500000000000001
  },
  "cohortes_con_costo": {
   "2026": 1513,
@@ -152,7 +152,7 @@
  },
  "ingenuo_en_la_extension": {
   "2026": {
-   "segundos": 0.01,
+   "segundos": 0.02,
    "D_un_paso": 85.56886024068041,
    "D_horizonte": 120.53160304884875
   },

@@ -77,12 +77,12 @@ import pandas as pd
 
 DESTINO = "resultados/tablas"
 NO_DISPONIBLE = "n. d."
-# Rótulos de la Tabla 8 del documento (Holt–Winters con el guion del documento).
+# Rótulos de la Tabla 8 del documento (Holt-Winters con guion).
 NOMBRES_P2 = {
     "motor": "Motor de selección automática",
     "lightgbm": "LightGBM",
     "exp_smooth_opt": "Suavizado exponencial simple",
-    "holt_winters": "Holt–Winters",
+    "holt_winters": "Holt-Winters",
     "ma_2": "Promedio móvil 2 meses",
     "ma_12": "Promedio móvil 12 meses",
     "naive_m1": "Ingenuo",
@@ -105,7 +105,7 @@ EXTENSION = [
     ("tft", "TFT", None),
     ("lightgbm_directo", "LightGBM con proyección directa", "Sin búsqueda propia"),
     ("lightgbm", "LightGBM", None),
-    ("holt_winters", "Holt–Winters", "Sin búsqueda propia"),
+    ("holt_winters", "Holt-Winters", "Sin búsqueda propia"),
 ]
 # Ancla que la nota de la Tabla P3 cita sin fila propia.
 ANCLA_EN_NOTA = "naive_m1"
