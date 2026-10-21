@@ -1,4 +1,4 @@
-"""Pruebas del remuestreo agrupado de la Tabla H3 (scripts/incertidumbre_agrupada.py).
+"""Pruebas del remuestreo agrupado de la Tabla H3, Tabla 20 del documento final (scripts/incertidumbre_agrupada.py).
 
 Sólo paneles sintéticos, construidos aquí: ninguna cifra ni clave de la
 corrida real.

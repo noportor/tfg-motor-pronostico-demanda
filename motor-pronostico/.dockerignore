@@ -1,5 +1,5 @@
 # El snapshot de datos NO entra en la imagen: se monta como volumen. Meterlo en
-# una capa de Docker sería distribuir información confidencial (Anexo B).
+# una capa de Docker sería distribuir información confidencial (Anexo 2).
 datos/
 salidas/
 notebooks/

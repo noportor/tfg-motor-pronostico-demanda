@@ -1,10 +1,10 @@
-"""Tabla L3 del Anexo L: hiperparámetros del modelo global y lectura de la búsqueda.
+"""Tabla L3 del Anexo L (Tabla 28 del Anexo 12 en el documento final): hiperparámetros del modelo global y lectura de la búsqueda.
 
 Propósito
 ---------
 Reproduce, desde la tabla de ensayos publicada de la búsqueda de hiperparámetros
 (``resultados/ensayos/lightgbm_tuning_ensayos.csv``) y desde la configuración
-declarada (``config/config.yaml``), la Tabla L3 del Anexo L con las mismas
+declarada (``config/config.yaml``), la Tabla L3 (Tabla 28 del documento final) con las mismas
 filas, columnas y rótulos que el texto del anexo: para cada hiperparámetro, el
 valor elegido, el rango explorado con su escala, la función que cumple, el
 rango que ocupa en la meseta (los ensayos a menos de dos puntos de la mejor D

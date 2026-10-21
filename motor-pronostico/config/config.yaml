@@ -12,7 +12,7 @@
 # -----------------------------------------------------------------------------
 datos:
   # Ruta del archivo crudo. Se resuelve relativa a la raíz del repositorio.
-  # datos/crudo/ está en .gitignore desde el primer commit (Anexo B — acuerdo de
+  # datos/crudo/ está en .gitignore desde el primer commit (Anexo 2 — acuerdo de
   # confidencialidad).
   archivo: "datos/crudo/ventas_novapack.csv"
 

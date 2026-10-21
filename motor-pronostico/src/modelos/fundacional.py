@@ -15,7 +15,7 @@ Decisiones declaradas
   vieron jamás datos de NOVAPACK.
 - **Los datos no salen de la máquina.** Los pesos se descargan una vez desde el
   repositorio público y la inferencia corre local (GPU si hay): ninguna serie
-  viaja a una API externa (Anexo B).
+  viaja a una API externa (Anexo 2).
 - **Punto de pronóstico = media.** La salida nativa es probabilística
   (cuantiles); se toma la media, consistente con el objetivo de los demás
   brazos (la demanda esperada, no la mediana — la lección Tweedie del estudio).

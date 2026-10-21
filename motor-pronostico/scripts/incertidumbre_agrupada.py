@@ -1,4 +1,5 @@
-"""Anexo H, Tabla H3: incertidumbre agrupada de las diferencias del contraste.
+"""Anexo 8 (Anexo H en la versión evaluada), Tabla H3 (Tabla 20 del documento final): incertidumbre
+agrupada de las diferencias del contraste.
 
 Propósito
 ---------
@@ -55,7 +56,7 @@ Insumos (todos de ``salidas/``; el script verifica su SHA-256 contra
   de prueba (variante temporal) y demanda observada de entrenamiento.
 * ``fuera_de_muestra.csv``: valor de entrenamiento valorizado a costo por
   serie. El costo unitario de cada serie se deduce como ese valor sobre la
-  demanda observada de entrenamiento, igual que el script del Anexo N; el
+  demanda observada de entrenamiento, igual que el script del Anexo 14; el
   script se detiene si la D así reconstruida no reproduce la Tabla 8
   valorizada (``tabla_valorizada.csv``) de los once modelos.
 * ``tabla_valorizada.csv``, ``error_por_mes.csv``: controles.
@@ -102,7 +103,7 @@ COMPARACIONES: list[tuple[str, str]] = [
     ("lightgbm", "naive_m1"),
 ]
 # Las que publica pruebas_estadisticas.txt (la quinta, motor frente a ma_12_gf,
-# la reproduce el script del Anexo H): control de reproducción del p y de r.
+# la reproduce el script del Anexo 8): control de reproducción del p y de r.
 PUBLICADAS_EN_TXT: dict[tuple[str, str], tuple[float, float]] = {
     # (r, rango biserial) tal como los imprime pruebas_estadisticas.txt
     ("motor", "ma_12"): (-0.3071, -0.3726),

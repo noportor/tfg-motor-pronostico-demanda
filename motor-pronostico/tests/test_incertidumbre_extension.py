@@ -1,4 +1,4 @@
-"""Pruebas de la Tabla H4 (scripts/incertidumbre_extension.py).
+"""Pruebas de la Tabla H4, Tabla 21 del documento final (scripts/incertidumbre_extension.py).
 
 Sólo paneles sintéticos, construidos aquí: ninguna cifra ni clave de las
 corridas reales. Se arma una carpeta de salidas completa (con su manifiesto y

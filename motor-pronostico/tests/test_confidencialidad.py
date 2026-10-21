@@ -1,7 +1,7 @@
 """Control de confidencialidad sobre los archivos versionados.
 
-Este repositorio se publica: el Anexo G de la tesis enlaza el código. El
-histórico de ventas está cubierto por un acuerdo de confidencialidad (Anexo B), y
+Este repositorio se publica: el Anexo 7 de la tesis enlaza el código. El
+histórico de ventas está cubierto por un acuerdo de confidencialidad (Anexo 2), y
 con él el esquema interno del sistema de origen: nombres de base, de esquema, de
 tabla, direcciones e identificadores de la empresa.
 
@@ -217,7 +217,7 @@ def test_ningun_archivo_versionado_parece_una_credencial():
 
 
 def test_no_se_versiona_ningun_archivo_de_datos():
-    """`datos/crudo/` NUNCA se versiona (Anexo B)."""
+    """`datos/crudo/` NUNCA se versiona (Anexo 2)."""
     versionados = [p.relative_to(RAIZ).as_posix() for p in _archivos_versionados()]
     filtrados = [
         v for v in versionados

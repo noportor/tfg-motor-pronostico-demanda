@@ -1,9 +1,10 @@
-"""Anexo N: conteos por estado de actividad y meses de historia de las series.
+"""Anexo 14 (Anexo N en la versión evaluada; sus Tablas N1 a N4 son las Tablas 30 a 33 del documento
+final): conteos por estado de actividad y meses de historia de las series.
 
 Propósito
 ---------
 Reproduce, sólo desde salidas publicadas de la corrida principal, las Tablas
-N2 y N3 del Anexo N, los conteos de costo faltante del párrafo que las sigue y
+N2 y N3 del Anexo 14, los conteos de costo faltante del párrafo que las sigue y
 la evidencia de datos de las Tablas N1 y N4:
 
 * Tabla N2: series por estado de actividad al cierre del entrenamiento y por
@@ -29,7 +30,7 @@ la evidencia de datos de las Tablas N1 y N4:
   meses con el detector de régimen activo en cada gestión de la extensión y la
   D de la variante sin tratamiento del evento.
 
-Lo que este script NO calcula, porque exige la captura de ventas (Anexo B) y no
+Lo que este script NO calcula, porque exige la captura de ventas (Anexo 2) y no
 está en ninguna salida publicada: las series que venden en validación y en
 prueba y el valor de prueba de las series excluidas, la línea base de respaldo
 fuera de la muestra, las seis series sin historia y sin costo (317 en total),

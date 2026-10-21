@@ -1391,7 +1391,7 @@ def comando_ejecutar(cfg) -> int:
             skus_usados.add(serie.split("|")[0])
             # SOLO el SKU seudonimizado en el título: esta figura va al
             # documento publicado y el nombre real de la regional es
-            # información de la empresa (Anexo B).
+            # información de la empresa (Anexo 2).
             return serie, f"{etiqueta}\n{serie.split('|')[0]}"
 
         # Etiquetas cortas: los rótulos largos desbordaban el ancho del panel.

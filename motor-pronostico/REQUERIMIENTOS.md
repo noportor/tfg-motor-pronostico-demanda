@@ -342,10 +342,10 @@ Tres desviaciones respecto del boceto inicial, todas deliberadas:
   datos, una sola vez— del pipeline, que no lo hace nunca (§9).
 
 **Sobre los datos y el control de versiones.** El histórico de NOVAPACK está
-cubierto por un acuerdo de confidencialidad (Anexo B de la tesis). `datos/crudo/`
+cubierto por un acuerdo de confidencialidad (Anexo 2 de la tesis). `datos/crudo/`
 va en `.gitignore` desde el primer commit.
 
-El repositorio **se publica**: el Anexo G enlaza el código. Eso extiende la
+El repositorio **se publica**: el Anexo 7 enlaza el código. Eso extiende la
 obligación más allá de los datos, al esquema interno del sistema de origen
 —nombres de base, de esquema, de tabla y de columnas—, que por eso vive en
 `config/extraccion.local.yaml`, fuera del control de versiones.

@@ -113,7 +113,7 @@ REUNION = "Reunión\nmensual de\nplanificación"
 RETRO = ("Plan consensuado y venta real: error por etapa y valor agregado "
          "(FVA), medidos en la corrida siguiente")
 
-# Franja inferior: interior del microservicio (nombres de la Tabla O1).
+# Franja inferior: interior del microservicio (nombres de la Tabla O1, la Tabla 34 del documento final).
 API = "API y\nautenticación"
 PERMISOS = "Permisos\npor rol"
 ORQUESTADOR = "Orquestador\nde la corrida\nmensual"

@@ -1,4 +1,5 @@
-"""Anexo P: Tablas P2 y P3 de la evaluación comparativa de referencia (benchmarks).
+"""Anexo 16 (Anexo P en la versión evaluada): Tablas P2 y P3 (Tablas 43 y 44 del documento final) de la
+evaluación comparativa de referencia (benchmarks).
 
 Propósito
 ---------

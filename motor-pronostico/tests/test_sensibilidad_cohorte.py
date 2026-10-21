@@ -1,4 +1,4 @@
-"""Pruebas de la sensibilidad de la cohorte (scripts/sensibilidad_cohorte.py, Tabla K1).
+"""Pruebas de la sensibilidad de la cohorte (scripts/sensibilidad_cohorte.py, Tabla K1, Tabla 25 del documento final).
 
 Sólo corridas sintéticas, construidas aquí en directorios temporales: ninguna
 cifra ni clave de la corrida real.

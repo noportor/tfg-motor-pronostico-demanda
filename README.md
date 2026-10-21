@@ -12,7 +12,7 @@ Santa Cruz de la Sierra, Bolivia
 
 | Carpeta | Contenido |
 |---|---|
-| [`motor-pronostico/`](motor-pronostico/) | **El análisis cuantitativo.** Código, pruebas y entorno reproducible que generan la Tabla 8, las figuras y el contraste estadístico del Capítulo III. Es el material que enlaza el **Anexo G**. |
+| [`motor-pronostico/`](motor-pronostico/) | **El análisis cuantitativo.** Código, pruebas y entorno reproducible que generan la Tabla 8, las figuras y el contraste estadístico del Capítulo III. Es el material que enlaza el **Anexo 7**. |
 | [`documento/`](documento/) | El documento oficial de la tesis y sus anexos. |
 
 Cada carpeta tiene su propio `README.md`. Para correr el análisis, empezá por
@@ -20,10 +20,29 @@ Cada carpeta tiene su propio `README.md`. Para correr el análisis, empezá por
 
 ---
 
+## Correspondencia con el documento final
+
+El documento final numera sus anexos (Anexo 1 a Anexo 18) en lugar de rotularlos
+con letras, y numera de corrido las tablas y figuras de los anexos. Los archivos
+de resultados y los scripts de este repositorio conservan los rótulos de la
+versión evaluada, porque están sellados por los hashes del manifiesto de la
+corrida. Correspondencia:
+
+| Versión evaluada | Documento final |
+|---|---|
+| Anexo A a Anexo R | Anexo 1 a Anexo 18 (A es 1, B es 2, G es 7, H es 8, K es 11, L es 12, N es 14, P es 16) |
+| Tabla H3, Tabla H4 | Tabla 20, Tabla 21 |
+| Tabla K1 | Tabla 25 |
+| Tabla L3 | Tabla 28 |
+| Tablas N1 a N4 | Tablas 30 a 33 |
+| Tabla O1 | Tabla 34 |
+| Tablas P2 y P3 | Tablas 43 y 44 |
+| Figura K1 | Figura 15 |
+
 ## Confidencialidad
 
 El histórico de ventas que sustenta el análisis está cubierto por un acuerdo de
-confidencialidad con la empresa (**Anexo B** del documento). En consecuencia:
+confidencialidad con la empresa (**Anexo 2** del documento). En consecuencia:
 
 - Los **datos** no se versionan. El análisis parte de un snapshot congelado cuyo
   SHA-256 queda registrado en el manifiesto de cada corrida; el archivo en sí

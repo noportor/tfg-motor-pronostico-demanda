@@ -6,8 +6,8 @@ Artificial.
 
 Este repositorio contiene el código con el que se produjeron **todos los
 resultados cuantitativos del documento**: cada tabla, figura y prueba
-estadística proviene de una corrida reproducible de este pipeline. El Anexo G
-del documento enlaza aquí; el Anexo H reproduce el contraste estadístico con
+estadística proviene de una corrida reproducible de este pipeline. El Anexo 7
+del documento enlaza aquí; el Anexo 8 reproduce el contraste estadístico con
 [`scripts/anexo_h_contraste.py`](scripts/anexo_h_contraste.py). La
 especificación completa del experimento (requerimientos y reglas de negocio
 RN-1 a RN-6) está en [`REQUERIMIENTOS.md`](REQUERIMIENTOS.md).
@@ -71,7 +71,7 @@ de Nemenyi).
 | `salidas/figura01_*.png` … `figura13_*.png` | Catálogo de figuras del documento (F1–F13) |
 | `salidas/inspeccion_datos.txt`, `cohorte_flujo.csv` | Criterios de inclusión y tamaño de la muestra |
 | `salidas/manifiesto.json` | Trazabilidad de la corrida (datos, configuración, código) |
-| `scripts/anexo_h_contraste.py` | Anexo H — reproduce el contraste estadístico |
+| `scripts/anexo_h_contraste.py` | Anexo 8 — reproduce el contraste estadístico |
 
 ## Reproducibilidad
 
@@ -125,7 +125,7 @@ docker compose up -d visor        # -> http://localhost:8501
 ## Confidencialidad
 
 El histórico de ventas de NOVAPACK S.A. está cubierto por un acuerdo de
-confidencialidad (Anexo B del documento), y con él el esquema interno del
+confidencialidad (Anexo 2 del documento), y con él el esquema interno del
 sistema de origen. Por eso **los datos no están en este repositorio** y el
 pipeline se ejecuta sobre un snapshot local que no se versiona. Tres barreras
 lo garantizan:
@@ -154,7 +154,7 @@ el documento llevan los hashes de su manifiesto para su verificación.
 | Ruta | Contenido |
 |---|---|
 | `main.py`, `src/` | El pipeline del experimento (etapas, modelos, reporte) |
-| `scripts/` | Extracción del snapshot, ajuste de modelos y Anexo H |
+| `scripts/` | Extracción del snapshot, ajuste de modelos y Anexo 8 |
 | `tests/` | Contrato de datos, pipeline y control de confidencialidad |
 | `visor/` | Visor de corridas (React + nginx, solo lectura) |
 | `config/` | Configuración declarada del experimento |

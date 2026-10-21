@@ -1,4 +1,4 @@
-"""ANEXO H — Script de contraste estadístico de la hipótesis.
+"""ANEXO 8 (Anexo H en la versión evaluada) — Script de contraste estadístico de la hipótesis.
 
 Reproduce, desde el artefacto ``errores_por_serie.csv`` de la corrida, los
 valores reportados en el apartado «Contraste estadístico de la hipótesis»:

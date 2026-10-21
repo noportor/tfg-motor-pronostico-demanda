@@ -17,7 +17,7 @@ una excepción con su motivo escrito. La revisión, en concreto:
   archivo.
 - Que no haya códigos de producto, listas de clientes ni capturas del sistema
   interno.
-- Que el **Anexo B** (acuerdo de confidencialidad) no exponga nombres, cargos ni
+- Que el **Anexo 2** (acuerdo de confidencialidad) no exponga nombres, cargos ni
   firmas de terceros que no hayan consentido su publicación.
 - Que las tablas y figuras coincidan con las salidas vigentes de
   `motor-pronostico/salidas/`. Si se vuelve a ejecutar el análisis, los

@@ -1,4 +1,5 @@
-"""Anexo H, Tabla H4: incertidumbre agrupada de la extensión exploratoria.
+"""Anexo 8 (Anexo H en la versión evaluada), Tabla H4 (Tabla 21 del documento final): incertidumbre
+agrupada de la extensión exploratoria.
 
 Propósito
 ---------

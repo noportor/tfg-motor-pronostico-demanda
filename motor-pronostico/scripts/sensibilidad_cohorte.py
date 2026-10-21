@@ -1,4 +1,5 @@
-"""Anexo K, Tabla K1: sensibilidad de la cohorte de evaluación.
+"""Anexo 11 (Anexo K en la versión evaluada), Tabla K1 (Tabla 25 del documento final): sensibilidad de
+la cohorte de evaluación.
 
 Propósito
 ---------
@@ -48,12 +49,12 @@ Definiciones (las mismas del motor):
 
 * Costo unitario de cada serie: valor de entrenamiento (``fuera_de_muestra.csv``)
   sobre su demanda observada de entrenamiento (``series_y_predicciones.csv``),
-  como los scripts de los Anexos H y N. El script se detiene si la D así
+  como los scripts de los Anexos 8 y 14. El script se detiene si la D así
   reconstruida no reproduce ``tabla_valorizada.csv`` de cada corrida.
 * D = WMAPE valorizado + |sesgo valorizado agregado|, sobre las series con costo,
   a un paso en el bloque de prueba.
 * Cobertura: valor de entrenamiento de las series de la cohorte sobre el de toda
-  la población objetivo (la misma medida de la cascada del Anexo K y de la
+  la población objetivo (la misma medida de la cascada del Anexo 11 y de la
   Tabla N2).
 
 Uso
