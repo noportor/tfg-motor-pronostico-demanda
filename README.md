@@ -35,8 +35,8 @@ corrida. Correspondencia:
 | Tabla K1 | Tabla 25 |
 | Tabla L3 | Tabla 28 |
 | Tablas N1 a N4 | Tablas 30 a 33 |
-| Tabla O1 | Tabla 34 |
-| Tablas P2 y P3 | Tablas 43 y 44 |
+| Tabla O1 | Tabla 35 |
+| Tablas P2 y P3 | Tablas 44 y 45 |
 | Figura K1 | Figura 15 |
 
 ## Confidencialidad
