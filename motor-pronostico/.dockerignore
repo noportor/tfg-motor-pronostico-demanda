@@ -1,15 +1,38 @@
+# Contexto de construcción de la imagen (Dockerfile de esta carpeta).
+#
 # El snapshot de datos NO entra en la imagen: se monta como volumen. Meterlo en
 # una capa de Docker sería distribuir información confidencial (Anexo 2).
 datos/
 salidas/
+salidas_*/
 notebooks/
 .git/
-__pycache__/
-*.py[cod]
-.pytest_cache/
+
+# Archivos locales que el repositorio no versiona y que tampoco pueden entrar en
+# la imagen: la lista local de términos reservados, la configuración local de
+# extracción (esquema interno del sistema de origen) y cualquier credencial.
+config/confidencialidad.local.txt
+config/extraccion.local.yaml
+config/env.local
+.env
+.env.*
+
+# Registros de consola de las corridas y artefactos de entrenamiento: llevan
+# rutas locales y el nombre del equipo.
+**/*.log
+**/lightning_logs/
+
+# Cachés de Python a cualquier profundidad. Los patrones de .dockerignore se
+# anclan a la raíz del contexto (reglas de filepath.Match de Go): «__pycache__/»
+# solo excluía /__pycache__ y dejaba entrar scripts/, src/, src/modelos/ y
+# tests/__pycache__/, como mostró la capa 17 de la imagen 36118f8f. «**/» cubre
+# cualquier nivel.
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
 .venv/
 venv/
-.env
-salidas_*/
+
+# Visor (SPA): dependencias y build no se versionan ni entran en la imagen.
 visor/node_modules/
 visor/dist/
